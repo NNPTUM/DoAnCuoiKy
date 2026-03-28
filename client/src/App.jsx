@@ -3,6 +3,7 @@ import "./App.css";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Home from "./pages/Home";
+import Message from "./pages/Message";
 
 function App() {
   return (
@@ -12,6 +13,7 @@ function App() {
         {/* Các route khác sẽ thêm vào đây sau */}
         <Route path="/" element={<Home />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/messages" element={<Message />} />
       </Routes>
     </BrowserRouter>
   );
