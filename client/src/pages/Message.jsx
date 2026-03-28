@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 /* ─── Palette ─── */
 const C = {
@@ -72,8 +73,8 @@ const Avatar = ({ src, size = 40, online = false, style = {} }) => (
   </div>
 );
 
-const IconBtn = ({ children, title }) => (
-  <button title={title} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: C.textSec, padding: '8px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
+const IconBtn = ({ children, title, onClick }) => (
+  <button title={title} onClick={onClick} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: C.textSec, padding: '8px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
     onMouseEnter={e => e.currentTarget.style.background = C.panelAlt}
     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
   >
@@ -84,6 +85,7 @@ const IconBtn = ({ children, title }) => (
 /* ─── Main Component ─── */
 export default function Message() {
   const [inputText, setInputText] = useState('');
+  const navigate = useNavigate();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: C.bg, fontFamily: "'Inter', sans-serif", color: C.textPri, overflow: 'hidden' }}>
@@ -101,11 +103,11 @@ export default function Message() {
         {/* Nav Icons */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           {[
-            { title: 'Home', path: 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z' },
-            { title: 'Explore', path: 'M12 2a10 10 0 100 20A10 10 0 0012 2zm0 0v20M2 12h20' },
-          ].map(({ title, path }) => (
-            <IconBtn key={title} title={title}>
-              <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={path}/></svg>
+            { title: 'Home',    route: '/',        svgPath: 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z' },
+            { title: 'Settings', route: '/settings', svgPath: 'M12 15a3 3 0 100-6 3 3 0 000 6zm7.4-3c0-.3 0-.6-.1-.9l1.9-1.5c.2-.2.2-.4.1-.6l-1.8-3.1c-.1-.2-.4-.3-.6-.2l-2.2.9c-.5-.4-1-.7-1.5-.9l-.3-2.4c-.1-.2-.3-.4-.5-.4h-3.6c-.2 0-.4.2-.5.4l-.3 2.4c-.6.2-1.1.5-1.5.9l-2.2-.9c-.2-.1-.5 0-.6.2L3.6 9c-.1.2-.1.4.1.6l1.9 1.5c0 .3-.1.6-.1.9s0 .6.1.9L3.7 14.4c-.2.2-.2.4-.1.6l1.8 3.1c.1.2.4.3.6.2l2.2-.9c.5.4 1 .7 1.5.9l.3 2.4c.1.2.3.4.5.4h3.6c.2 0 .4-.2.5-.4l.3-2.4c.6-.2 1.1-.5 1.5-.9l2.2.9c.2.1.5 0 .6-.2l1.8-3.1c.1-.2.1-.4-.1-.6l-1.9-1.5c.1-.3.1-.6.1-.9z' },
+          ].map(({ title, route, svgPath }) => (
+            <IconBtn key={title} title={title} onClick={() => navigate(route)}>
+              <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={svgPath}/></svg>
             </IconBtn>
           ))}
           {/* Messages (active) */}

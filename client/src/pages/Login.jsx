@@ -20,7 +20,7 @@ const Login = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     console.log("Dữ liệu gửi lên server:", formData);
-    // navigate('/');
+    navigate('/');
   };
 
   return (

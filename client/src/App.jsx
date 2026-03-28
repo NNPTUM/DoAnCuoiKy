@@ -5,6 +5,7 @@ import Register from "./pages/Register";
 import Home from "./pages/Home";
 import Message from "./pages/Message";
 import Settings from "./pages/Settings";
+import Explore from "./pages/Explore";
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/messages" element={<Message />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/explore" element={<Explore />} />
       </Routes>
     </BrowserRouter>
   );

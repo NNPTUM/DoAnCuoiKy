@@ -1,6 +1,8 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const Home = () => {
+  const navigate = useNavigate();
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#f0f2f5', fontFamily: "'Inter', sans-serif", color: '#232c51' }}>
 
@@ -53,13 +55,13 @@ const Home = () => {
           {/* Nav Links */}
           <nav style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
             {[
-              { icon: 'home', label: 'Feed', active: true },
-              { icon: 'explore', label: 'Explore', active: false },
-              { icon: 'mail', label: 'Messages', active: false },
-              { icon: 'bookmark', label: 'Bookmarks', active: false },
-              { icon: 'settings', label: 'Settings', active: false },
-            ].map(({ icon, label, active }) => (
-              <a key={label} href="#" style={{
+              { icon: 'home', label: 'Feed', active: true, path: '/' },
+              { icon: 'explore', label: 'Explore', active: false, path: '/explore' },
+              { icon: 'mail', label: 'Messages', active: false, path: '/messages' },
+              { icon: 'bookmark', label: 'Bookmarks', active: false, path: '/bookmarks' },
+              { icon: 'settings', label: 'Settings', active: false, path: '/settings' },
+            ].map(({ icon, label, active, path }) => (
+              <a key={label} href="#" onClick={(e) => { e.preventDefault(); navigate(path); }} style={{
                 display: 'flex', alignItems: 'center', gap: '12px',
                 padding: '10px 16px', borderRadius: '10px', textDecoration: 'none',
                 fontWeight: active ? 700 : 500, fontSize: '14px',
