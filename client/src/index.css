@@ -1,3 +1,33 @@
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL,GRAD,opsz@100..700,0..1,0,24&display=swap");
+
+@import "tailwindcss";
+
+@theme {
+  --color-surface-container: #e4e7ff;
+  --color-surface-container-low: #efefff;
+  --color-surface-container-lowest: #ffffff;
+  --color-background: #f7f5ff;
+  --color-on-background: #232c51;
+  --color-surface: #f7f5ff;
+  --color-on-surface-variant: #515981;
+  --color-on-surface: #232c51;
+  --color-primary: #0058bb;
+  --color-on-primary-container: #00214f;
+  --font-headline: "Plus Jakarta Sans", sans-serif;
+  --font-body: "Inter", sans-serif;
+}
+
+/* Base custom font mapping for Material Symbols */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 400,
+    "GRAD" 0,
+    "opsz" 24;
+}
+
 /* Reset lại toàn bộ margin và padding mặc định của trình duyệt */
 * {
   box-sizing: border-box;
