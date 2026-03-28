@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import API from "../api/axios";
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -21,16 +22,25 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // Kiểm tra mật khẩu xác nhận có khớp không
     if (formData.password !== formData.confirmPassword) {
-      alert("Mật khẩu xác nhận không khớp. Vui lòng kiểm tra lại!");
+      alert("Mật khẩu xác nhận không khớp!");
       return;
     }
 
-    console.log("Dữ liệu đăng ký gửi lên server:", formData);
-    // Sau khi đăng ký thành công có thể chuyển hướng về trang đăng nhập
-    // navigate('/login');
+    try {
+      const response = await API.post("/auth/register", {
+        username: formData.fullName, // Map fullName của FE vào username của BE
+        email: formData.email,
+        password: formData.password,
+      });
+
+      if (response.data.success) {
+        alert("Đăng ký thành công!");
+        navigate("/login");
+      }
+    } catch (error) {
+      alert(error.response?.data?.message || "Đăng ký thất bại");
+    }
   };
 
   return (

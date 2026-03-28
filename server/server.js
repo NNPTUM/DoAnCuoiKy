@@ -2,7 +2,10 @@
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const connectDB = require("./config/db.config");
+const connectDB = require("./src/config/db.config");
+const authRoutes = require("./src/routes/auth.route");
+const postRoutes = require("./src/routes/post.route");
+require("./src/models");
 
 // Khởi tạo app Express
 const app = express();
@@ -10,6 +13,8 @@ const app = express();
 // Middleware
 app.use(cors()); // Cho phép Frontend (Vite) gọi API không bị lỗi CORS
 app.use(express.json()); // Giúp Backend đọc được dữ liệu JSON từ Frontend gửi lên
+app.use("/api/auth", authRoutes); // Đăng ký route cho auth (đăng ký, đăng nhập)
+app.use("/api/posts", postRoutes);
 
 // Tạo một API test thử
 app.get("/", (req, res) => {

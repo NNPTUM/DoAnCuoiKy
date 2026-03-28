@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import API from "../api/axios";
 
 const Login = () => {
   const [formData, setFormData] = useState({
@@ -19,8 +20,20 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log("Dữ liệu gửi lên server:", formData);
-    // navigate('/');
+    try {
+      const response = await API.post("/auth/login", formData);
+
+      if (response.data.success) {
+        // 1. Lưu token và thông tin user vào máy khách
+        localStorage.setItem("token", response.data.data.token);
+        localStorage.setItem("user", JSON.stringify(response.data.data.user));
+
+        alert("Đăng nhập thành công!");
+        navigate("/"); // Chuyển về trang chủ
+      }
+    } catch (error) {
+      alert(error.response?.data?.message || "Sai tài khoản hoặc mật khẩu");
+    }
   };
 
   return (
