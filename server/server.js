@@ -5,6 +5,8 @@ const cors = require("cors");
 const connectDB = require("./src/config/db.config");
 const authRoutes = require("./src/routes/auth.route");
 const postRoutes = require("./src/routes/post.route");
+const uploadRoutes = require("./src/routes/upload.route");
+const connectionRoutes = require('./src/routes/connection.route');
 require("./src/models");
 
 // Khởi tạo app Express
@@ -15,6 +17,8 @@ app.use(cors()); // Cho phép Frontend (Vite) gọi API không bị lỗi CORS
 app.use(express.json()); // Giúp Backend đọc được dữ liệu JSON từ Frontend gửi lên
 app.use("/api/auth", authRoutes); // Đăng ký route cho auth (đăng ký, đăng nhập)
 app.use("/api/posts", postRoutes);
+app.use("/api/upload", uploadRoutes);
+app.use('/api/connections', connectionRoutes);
 
 // Tạo một API test thử
 app.get("/", (req, res) => {

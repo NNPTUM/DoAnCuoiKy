@@ -105,3 +105,49 @@ exports.getMe = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Cập nhật thông tin profile của user đang đăng nhập
+exports.updateProfile = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { username, bio, avatarUrl } = req.body;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { 
+        ...(username && { username }),
+        ...(bio !== undefined && { bio }),
+        ...(avatarUrl && { avatarUrl })
+      },
+      { returnDocument: 'after' }
+    ).select("-password -roleId");
+
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Cập nhật hồ sơ thành công",
+      data: updatedUser,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+       return res.status(400).json({ success: false, message: "Tên người dùng đã được sử dụng" });
+    }
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+// Lấy thông tin profile của một user khác theo ID
+exports.getUserById = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const user = await User.findById(userId).select("-password -roleId -email");
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
+    }
+    return res.status(200).json({ success: true, data: user });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
