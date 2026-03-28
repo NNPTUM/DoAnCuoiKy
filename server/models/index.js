@@ -1,0 +1,16 @@
+require("./block.model");
+require("./comment.model");
+require("./conversation.model");
+require("./conversation_member.model");
+require("./friend_request.model");
+require("./friendship.model");
+require("./hashtag.model");
+require("./media.model");
+require("./message.model");
+require("./notification.model");
+require("./post.model");
+require("./reaction.model");
+require("./role.model");
+require("./token.model");
+require("./user.model");
+require("./user_setting.model");
