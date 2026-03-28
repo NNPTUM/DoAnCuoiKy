@@ -6,6 +6,7 @@ import Home from "./pages/Home";
 import Message from "./pages/Message";
 import Settings from "./pages/Settings";
 import Explore from "./pages/Explore";
+import Bookmarks from "./pages/Bookmarks";
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="/messages" element={<Message />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/explore" element={<Explore />} />
+        <Route path="/bookmarks" element={<Bookmarks />} />
       </Routes>
     </BrowserRouter>
   );
