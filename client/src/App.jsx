@@ -3,7 +3,7 @@ import "./App.css";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Home from "./pages/Home";
-
+import Settings from "./pages/Settings";
 function App() {
   return (
     <BrowserRouter>
@@ -12,6 +12,7 @@ function App() {
         {/* Các route khác sẽ thêm vào đây sau */}
         <Route path="/" element={<Home />} />
         <Route path="/register" element={<Register />} />
+        <Route path="/settings" element={<Settings />} />
       </Routes>
     </BrowserRouter>
   );
