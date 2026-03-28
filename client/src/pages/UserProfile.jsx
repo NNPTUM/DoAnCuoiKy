@@ -22,6 +22,18 @@ const UserProfile = () => {
   const [friendStatus, setFriendStatus] = useState("none"); // 'none' | 'sent' | 'pending' | 'friends'
   const [sending, setSending] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [likedPosts, setLikedPosts] = useState({});
+
+  // Comment states
+  const [commentInputs, setCommentInputs] = useState({});
+  const [postComments, setPostComments] = useState({});
+  const [activeCommentPostId, setActiveCommentPostId] = useState(null);
+  const [editingCommentId, setEditingCommentId] = useState(null);
+  const [editingCommentContent, setEditingCommentContent] = useState("");
+  const [isUpdatingComment, setIsUpdatingComment] = useState(false);
+  const [activeDropdownCommentId, setActiveDropdownCommentId] = useState(null);
+
+  const currentUserId = currentUser?._id;
 
   useEffect(() => {
     if (!userId) return;
@@ -31,17 +43,26 @@ const UserProfile = () => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [profileRes, postsRes, statusRes, pendingRes] = await Promise.all([
+      const [profileRes, postsRes, statusRes, pendingRes, reactionsRes] = await Promise.all([
         API.get(`/auth/users/${userId}`),
         API.get(`/posts/user/${userId}`),
         API.get(`/connections/status/${userId}`),
         API.get("/connections/requests/pending"),
+        API.get("/posts/reactions/my-posts"),
       ]);
 
       if (profileRes.data.success) setProfileData(profileRes.data.data);
       if (postsRes.data.success) setPosts(postsRes.data.data);
       if (statusRes.data.success) setFriendStatus(statusRes.data.status);
       if (pendingRes.data.success) setPendingCount(pendingRes.data.data.length);
+
+      if (reactionsRes.data.success) {
+        const likedMap = {};
+        reactionsRes.data.data.forEach((postId) => {
+          likedMap[postId] = true;
+        });
+        setLikedPosts(likedMap);
+      }
     } catch (err) {
       console.error("Lỗi tải profile:", err);
     } finally {
@@ -58,6 +79,145 @@ const UserProfile = () => {
       alert(err.response?.data?.message || "Lỗi gửi lời mời");
     } finally {
       setSending(false);
+    }
+  };
+
+  const handleLike = async (postId) => {
+    try {
+      const response = await API.post(`/posts/${postId}/react`, {
+        targetModel: "Post",
+        type: "like",
+      });
+      if (response.data.success) {
+        setPosts((prevPosts) =>
+          prevPosts.map((p) => {
+            if (p._id === postId) {
+              return {
+                ...p,
+                reactionCount: response.data.isReacted
+                  ? p.reactionCount + 1
+                  : Math.max(0, p.reactionCount - 1),
+              };
+            }
+            return p;
+          })
+        );
+        setLikedPosts((prev) => ({
+          ...prev,
+          [postId]: response.data.isReacted,
+        }));
+      }
+    } catch (error) {
+      console.error("Like error", error);
+    }
+  };
+
+  // Comment handlers
+  const handleComment = async (postId) => {
+    const text = commentInputs[postId];
+    if (!text?.trim()) return;
+
+    try {
+      const response = await API.post(`/posts/${postId}/comments`, {
+        content: text,
+      });
+
+      if (response.data.success) {
+        const newComment = response.data.data;
+
+        setPosts((prevPosts) =>
+          prevPosts.map((p) =>
+            p._id === postId ? { ...p, commentCount: p.commentCount + 1 } : p
+          )
+        );
+
+        setPostComments((prev) => ({
+          ...prev,
+          [postId]: [newComment, ...(prev[postId] || [])],
+        }));
+
+        setActiveCommentPostId(postId);
+        setCommentInputs({ ...commentInputs, [postId]: "" });
+      }
+    } catch (error) {
+      console.error("Comment error", error);
+      alert("Không thể gửi bình luận lúc này.");
+    }
+  };
+
+  const openCommentModal = async (postId) => {
+    setActiveCommentPostId(postId);
+    try {
+      const response = await API.get(`/posts/${postId}/comments`);
+      if (response.data.success) {
+        setPostComments((prev) => ({ ...prev, [postId]: response.data.data }));
+      }
+    } catch (error) {
+      console.error("Lỗi lấy bình luận:", error);
+    }
+  };
+
+  const closeCommentModal = () => {
+    setActiveCommentPostId(null);
+    setActiveDropdownCommentId(null);
+    setEditingCommentId(null);
+    setEditingCommentContent("");
+  };
+
+  const startEditingComment = (comment) => {
+    setEditingCommentId(comment._id);
+    setEditingCommentContent(comment.content || "");
+    setActiveDropdownCommentId(null);
+  };
+
+  const cancelEditingComment = () => {
+    setEditingCommentId(null);
+    setEditingCommentContent("");
+  };
+
+  const handleUpdateComment = async (postId, commentId) => {
+    if (!editingCommentContent.trim()) {
+      alert("Nội dung không được để trống");
+      return;
+    }
+    setIsUpdatingComment(true);
+    try {
+      const response = await API.put(`/posts/${postId}/comments/${commentId}`, {
+        content: editingCommentContent,
+      });
+      if (response.data.success) {
+        const updatedComment = response.data.data;
+        setPostComments((prev) => ({
+          ...prev,
+          [postId]: prev[postId].map((c) => (c._id === commentId ? updatedComment : c)),
+        }));
+        cancelEditingComment();
+      }
+    } catch (error) {
+      alert("Sửa bình luận thất bại: " + (error.response?.data?.message || ""));
+    } finally {
+      setIsUpdatingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (postId, commentId) => {
+    if (window.confirm("Bạn có chắc chắn muốn xóa bình luận này?")) {
+      try {
+        const response = await API.delete(`/posts/${postId}/comments/${commentId}`);
+        if (response.data.success) {
+          setPostComments((prev) => ({
+            ...prev,
+            [postId]: prev[postId].filter((c) => c._id !== commentId),
+          }));
+          setPosts((prevPosts) =>
+            prevPosts.map((p) =>
+              p._id === postId ? { ...p, commentCount: Math.max(0, p.commentCount - 1) } : p
+            )
+          );
+        }
+      } catch (error) {
+        alert("Xóa bình luận thất bại!");
+      }
     }
   };
 
@@ -239,11 +399,14 @@ const UserProfile = () => {
 
                     <div style={styles.postActions}>
                       <div style={{ display: "flex", gap: "20px" }}>
-                        <button style={{ ...styles.actionBtn }}>
-                          <span className="material-symbols-outlined">favorite</span>
+                        <button
+                          onClick={() => handleLike(post._id)}
+                          style={{ ...styles.actionBtn, color: likedPosts[post._id] ? "#e74c3c" : "#6c759e" }}
+                        >
+                          <span className="material-symbols-outlined" style={{ fontVariationSettings: likedPosts[post._id] ? "'FILL' 1" : "'FILL' 0" }}>favorite</span>
                           {post.reactionCount || 0}
                         </button>
-                        <button style={styles.actionBtn}>
+                        <button style={styles.actionBtn} onClick={() => openCommentModal(post._id)}>
                           <span className="material-symbols-outlined">chat_bubble</span>
                           {post.commentCount || 0}
                         </button>
@@ -264,6 +427,128 @@ const UserProfile = () => {
           </section>
         </aside>
       </div>
+
+      {/* ===== MODAL BÌNH LUẬN ===== */}
+      {activeCommentPostId && (
+        <div style={styles.modalOverlay} onClick={closeCommentModal}>
+          <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "bold" }}>Bình luận</h3>
+              <button style={styles.closeModalBtn} onClick={closeCommentModal}>
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+
+            <div style={styles.modalBody}>
+              {postComments[activeCommentPostId]?.length > 0 ? (
+                postComments[activeCommentPostId].map((comment) => (
+                  <div key={comment._id} style={styles.commentItem}>
+                    <img
+                      src={comment.userId?.avatarUrl}
+                      alt="Avatar"
+                      style={styles.avatarMini}
+                    />
+                    <div style={styles.commentContentBox}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                        <div style={styles.commentHeader}>
+                          <span style={styles.commentUser}>{comment.userId?.username}</span>
+                          <span style={styles.commentHandle}>
+                            @{comment.userId?.username?.toLowerCase().replace(/\s/g, "")}
+                          </span>
+                          <span style={{ color: "#536471", margin: "0 4px" }}>·</span>
+                          <span style={styles.commentTime}>{moment(comment.createdAt).fromNow(true)}</span>
+                        </div>
+
+                        {currentUserId && currentUserId === (comment.userId?._id || comment.userId) && (
+                          <div style={{ position: "relative" }}>
+                            <button
+                              onClick={() =>
+                                setActiveDropdownCommentId(
+                                  activeDropdownCommentId === comment._id ? null : comment._id
+                                )
+                              }
+                              style={styles.commentMenuBtn}
+                            >
+                              <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>more_horiz</span>
+                            </button>
+                            {activeDropdownCommentId === comment._id && (
+                              <div style={styles.commentDropdown}>
+                                <button onClick={() => startEditingComment(comment)} style={styles.dropdownItem}>
+                                  Sửa
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteComment(activeCommentPostId, comment._id)}
+                                  style={{ ...styles.dropdownItem, color: "#e74c3c" }}
+                                >
+                                  Xóa
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {editingCommentId === comment._id ? (
+                        <div style={styles.editCommentBox}>
+                          <textarea
+                            value={editingCommentContent}
+                            onChange={(e) => setEditingCommentContent(e.target.value)}
+                            rows={2}
+                            style={styles.editCommentTextarea}
+                          />
+                          <div style={styles.editCommentActions}>
+                            <button
+                              type="button"
+                              style={styles.cancelCommentBtn}
+                              onClick={cancelEditingComment}
+                              disabled={isUpdatingComment}
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              type="button"
+                              style={styles.saveCommentBtn}
+                              onClick={() => handleUpdateComment(activeCommentPostId, comment._id)}
+                              disabled={isUpdatingComment || !editingCommentContent.trim()}
+                            >
+                              {isUpdatingComment ? "Lưu..." : "Lưu"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p style={styles.commentText}>{comment.content}</p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div style={{ padding: "20px", textAlign: "center", color: "#6c759e" }}>Chưa có bình luận nào.</div>
+              )}
+            </div>
+
+            <div style={{ padding: "12px 20px", borderTop: "1px solid #eff3f4", display: "flex", gap: "10px", alignItems: "center", position: "sticky", bottom: 0, backgroundColor: "#fff", zIndex: 10 }}>
+              <input
+                type="text"
+                placeholder="Viết bình luận..."
+                value={commentInputs[activeCommentPostId] || ""}
+                onChange={(e) =>
+                  setCommentInputs({
+                    ...commentInputs,
+                    [activeCommentPostId]: e.target.value,
+                  })
+                }
+                style={styles.modalCommentInput}
+              />
+              <button
+                onClick={() => handleComment(activeCommentPostId)}
+                style={styles.sendBtn}
+              >
+                Gửi
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -297,6 +582,32 @@ const styles = {
   blueBtn: { backgroundColor: "#1877F2", color: "#fff" },
   grayBtn: { backgroundColor: "#e4e6eb", color: "#050505", cursor: "default" },
   greenBtn: { backgroundColor: "#e7f5ee", color: "#1a7a3c", cursor: "default" },
+
+  modalOverlay: { position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0, 0, 0, 0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 },
+  modalContent: { backgroundColor: "#fff", width: "100%", maxWidth: "500px", maxHeight: "80vh", borderRadius: "16px", display: "flex", flexDirection: "column", boxShadow: "0 4px 12px rgba(0,0,0,0.15)", overflowY: "auto", overflowX: "hidden", position: "relative" },
+  modalHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "16px 20px", borderBottom: "1px solid #eff3f4", position: "sticky", top: 0, backgroundColor: "#fff", zIndex: 10 },
+  closeModalBtn: { background: "none", border: "none", cursor: "pointer", color: "#536471", display: "flex", alignItems: "center", justifyContent: "center" },
+  modalBody: { flex: 1, padding: "0" },
+  modalCommentInput: { flex: 1, border: "none", outline: "none", fontSize: "15px", background: "#f0f2f5", padding: "10px 16px", borderRadius: "999px" },
+
+  commentItem: { display: "flex", gap: "12px", padding: "12px 16px", alignItems: "flex-start", borderBottom: "1px solid #eff3f4", transition: "background-color 0.2s", cursor: "pointer" },
+  avatarMini: { width: "40px", height: "40px", borderRadius: "50%", objectFit: "cover" },
+  commentContentBox: { flex: 1, backgroundColor: "transparent", boxShadow: "none", padding: "0" },
+  commentHeader: { display: "flex", alignItems: "center", gap: "4px", marginBottom: "2px" },
+  commentUser: { fontWeight: 700, fontSize: "15px", color: "#0f1419", margin: 0 },
+  commentHandle: { color: "#536471", fontSize: "15px", fontWeight: 400 },
+  commentTime: { fontSize: "15px", color: "#536471" },
+  commentText: { fontSize: "15px", lineHeight: "20px", margin: 0, color: "#0f1419", wordBreak: "break-word" },
+  sendBtn: { backgroundColor: "#1d9bf0", color: "#fff", border: "none", borderRadius: "999px", padding: "8px 16px", fontWeight: 700, fontSize: "14px", cursor: "pointer", transition: "background 0.2s" },
+
+  commentMenuBtn: { background: "none", border: "none", cursor: "pointer", color: "#536471", padding: "4px", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "50%" },
+  commentDropdown: { position: "absolute", right: 0, top: "24px", backgroundColor: "#fff", boxShadow: "0 2px 8px rgba(0,0,0,0.15)", borderRadius: "8px", overflow: "hidden", zIndex: 20, minWidth: "100px" },
+  dropdownItem: { width: "100%", padding: "8px 16px", border: "none", background: "none", textAlign: "left", cursor: "pointer", fontSize: "14px", color: "#0f1419" },
+  editCommentBox: { display: "flex", flexDirection: "column", gap: "8px", marginTop: "8px" },
+  editCommentTextarea: { width: "100%", background: "#f0f2f5", border: "none", borderRadius: "8px", padding: "8px 12px", resize: "vertical", outline: "none", boxSizing: "border-box", fontSize: "14px", fontFamily: "inherit" },
+  editCommentActions: { display: "flex", justifyContent: "flex-end", gap: "8px" },
+  cancelCommentBtn: { border: "1px solid #d8dce8", backgroundColor: "#fff", color: "#4c5773", borderRadius: "6px", padding: "4px 12px", cursor: "pointer", fontWeight: 600, fontSize: "12px" },
+  saveCommentBtn: { border: "none", backgroundColor: "#1877F2", color: "#fff", borderRadius: "6px", padding: "4px 12px", cursor: "pointer", fontWeight: 700, fontSize: "12px" },
 };
 
 export default UserProfile;
