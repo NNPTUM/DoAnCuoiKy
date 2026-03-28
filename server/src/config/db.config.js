@@ -1,4 +1,20 @@
 const mongoose = require("mongoose");
+const Role = require("../models/role.model");
+
+const DEFAULT_ROLES = [
+  {
+    name: "user",
+    description: "Người dùng tiêu chuẩn của hệ thống",
+  },
+  {
+    name: "admin",
+    description: "Quản trị viên hệ thống",
+  },
+  {
+    name: "moderator",
+    description: "Kiểm duyệt nội dung và cộng đồng",
+  },
+];
 
 const connectDB = async () => {
   try {
@@ -19,6 +35,15 @@ const connectDB = async () => {
           throw collectionError;
         }
       }
+    }
+
+    // Seed dữ liệu Role mặc định nếu DB chưa có.
+    for (const roleData of DEFAULT_ROLES) {
+      await Role.updateOne(
+        { name: roleData.name },
+        { $setOnInsert: roleData },
+        { upsert: true },
+      );
     }
 
     console.log(
