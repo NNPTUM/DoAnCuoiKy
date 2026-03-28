@@ -1,0 +1,22 @@
+/* Reset lại toàn bộ margin và padding mặc định của trình duyệt */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  width: 100vw;
+  min-height: 100vh;
+  background-color: #f0f2f5; /* Màu nền trùng với trang Login của bạn */
+  overflow-x: hidden; /* Chặn thanh cuộn ngang nếu có */
+}
+
+/* Đây là thủ phạm gây ra 2 vệt đen bên Vite */
+#root {
+  width: 100%;
+  max-width: 100%; /* Ghi đè lại giới hạn 1280px của Vite */
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+}
