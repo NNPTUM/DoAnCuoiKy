@@ -28,6 +28,9 @@ const Login = () => {
         localStorage.setItem("token", response.data.data.token);
         localStorage.setItem("user", JSON.stringify(response.data.data.user));
 
+        // 2. Thông báo SocketContext tạo socket cho user mới đăng nhập
+        window.dispatchEvent(new Event("userLoggedIn"));
+
         alert("Đăng nhập thành công!");
         navigate("/"); // Chuyển về trang chủ
       }

@@ -26,15 +26,12 @@ export const SocketProvider = ({ children }) => {
     }
   };
 
-  useEffect(() => {
+  const connectSocket = () => {
     const currentUser = JSON.parse(localStorage.getItem("user"));
-    if (!currentUser) return;
-
-    fetchPendingCount();
+    if (!currentUser) return null;
 
     const currentUserId = currentUser.id || currentUser._id;
     const newSocket = io(`http://${window.location.hostname}:5000`);
-    setSocket(newSocket);
 
     newSocket.on("connect", () => {
       console.log("[Socket] ✅ Kết nối thành công, socketId:", newSocket.id);
@@ -56,21 +53,46 @@ export const SocketProvider = ({ children }) => {
       setOnlineUsers(users);
     });
 
-    // Lắng nghe thông báo chung (Kết bạn, Tag...)
     newSocket.on("newNotification", (data) => {
       setNotifications((prev) => [data, ...prev]);
-      // Hiển thị toast message tạm thời
       setToastMessage(data.message);
       setTimeout(() => setToastMessage(null), 4000);
     });
 
-    // Lắng nghe đếm ngược pending
     newSocket.on("pendingFriendRequestCount", () => {
       fetchPendingCount();
     });
 
+    return newSocket;
+  };
+
+  useEffect(() => {
+    fetchPendingCount();
+
+    // Tạo socket lần đầu nếu đã đăng nhập
+    const initialSocket = connectSocket();
+    if (initialSocket) setSocket(initialSocket);
+
+    // Lắng nghe sự kiện "userLoggedIn" khi user vừa đăng nhập
+    const handleUserLoggedIn = () => {
+      // Ngắt socket cũ nếu có
+      setSocket((prevSocket) => {
+        if (prevSocket) prevSocket.disconnect();
+        return null;
+      });
+      fetchPendingCount();
+      const newSock = connectSocket();
+      if (newSock) setSocket(newSock);
+    };
+
+    window.addEventListener("userLoggedIn", handleUserLoggedIn);
+
     return () => {
-      newSocket.disconnect();
+      window.removeEventListener("userLoggedIn", handleUserLoggedIn);
+      setSocket((prevSocket) => {
+        if (prevSocket) prevSocket.disconnect();
+        return null;
+      });
     };
   }, []);
 
