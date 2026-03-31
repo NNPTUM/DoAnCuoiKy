@@ -1,384 +1,1398 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
+import API from "../api/axios";
+import moment from "moment";
+import { io } from "socket.io-client";
 
-/* ─── Palette ─── */
-const C = {
-  bg:        '#16181f',
-  panel:     '#1e2130',
-  panelAlt:  '#252839',
-  border:    '#2e3248',
-  accent:    '#3b7ef8',
-  accentDim: '#2563d4',
-  textPri:   '#f0f2ff',
-  textSec:   '#8b90b8',
-  online:    '#22c55e',
-  badge:     '#3b7ef8',
-  bubbleOut: '#3b7ef8',
-  bubbleIn:  '#252839',
-};
-
-const s = {
-  fill: { width: '100%', height: '100%' },
-  row:  { display: 'flex', alignItems: 'center' },
-  col:  { display: 'flex', flexDirection: 'column' },
-  ellipsis: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-};
-
-/* ─── Sample Data ─── */
-const stories = [
-  { id: 1, name: 'Your Story', src: 'https://i.pravatar.cc/150?img=47', isSelf: true },
-  { id: 2, name: 'Julian',     src: 'https://i.pravatar.cc/150?img=8',  online: true },
-  { id: 3, name: 'Marcus',     src: 'https://i.pravatar.cc/150?img=12', online: true },
-];
-
-const conversations = [
-  { id: 1, name: 'Elena Vance',         handle: '@elenavance',  src: 'https://i.pravatar.cc/150?img=47', time: 'Just now', preview: 'The moodboards look incredible! Let\'s...', unread: true, active: true },
-  { id: 2, name: 'Julian Casablancas',  src: 'https://i.pravatar.cc/150?img=8',  time: '24m ago', preview: 'Did you see the latest update from the dev tea...', unread: false },
-  { id: 3, name: 'Design System Squad', src: null,              time: '1h ago',  preview: 'Alex: I\'ve updated the Figma file.', unread: false, group: true },
-  { id: 4, name: 'Sarah Connor',        src: 'https://i.pravatar.cc/150?img=9',  time: '3h ago',  preview: 'I\'ll send you the details later tonight.', unread: false },
-];
-
-const messages = [
-  { id: 1, from: 'elena', text: 'Hey! I just finished reviewing the new UI components you sent over.', time: '11:42 PM', type: 'text' },
-  { id: 2, from: 'me',    text: 'Awesome! What did you think about the glassmorphism elements?', time: '11:45 PM', read: true, type: 'text' },
-  { id: 3, from: 'elena', text: 'The moodboards look incredible! Let\'s go with the darker palette for the core messaging experience. It feels much more premium and focused. 🚀', time: '', type: 'text',
-    images: [
-      'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=200&h=140&fit=crop',
-      'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=200&h=140&fit=crop',
-    ]
-  },
-  { id: 4, from: 'elena', text: '', time: 'Just now', type: 'typing' },
-];
-
-const sharedMedia = [
-  'https://images.unsplash.com/photo-1486325212027-8081e485255e?w=100&h=100&fit=crop',
-  'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=100&h=100&fit=crop',
-  'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=100&h=100&fit=crop',
-  'https://images.unsplash.com/photo-1633356122544-f134324a6cee?w=100&h=100&fit=crop',
-  'https://images.unsplash.com/photo-1518341131753-3bc11f32a762?w=100&h=100&fit=crop',
-];
-
-/* ─── Sub-components ─── */
-const Avatar = ({ src, size = 40, online = false, style = {} }) => (
-  <div style={{ position: 'relative', width: size, height: size, flexShrink: 0, ...style }}>
-    {src
-      ? <img src={src} alt="" style={{ width: size, height: size, borderRadius: '50%', objectFit: 'cover', display: 'block' }} />
-      : <div style={{ width: size, height: size, borderRadius: '50%', background: 'linear-gradient(135deg,#6366f1,#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <svg width={size * 0.55} height={size * 0.55} fill="white" viewBox="0 0 20 20"><path d="M13 6A3 3 0 1 1 7 6a3 3 0 0 1 6 0zm-9 11a7 7 0 1 1 14 0H4z"/></svg>
-        </div>
-    }
-    {online && (
-      <span style={{ position: 'absolute', bottom: 1, right: 1, width: 10, height: 10, borderRadius: '50%', background: C.online, border: `2px solid ${C.panel}` }} />
-    )}
-  </div>
-);
-
-const IconBtn = ({ children, title }) => (
-  <button title={title} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: C.textSec, padding: '8px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.15s' }}
-    onMouseEnter={e => e.currentTarget.style.background = C.panelAlt}
-    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-  >
-    {children}
-  </button>
-);
-
-/* ─── Main Component ─── */
 export default function Message() {
-  const [inputText, setInputText] = useState('');
+  const navigate = useNavigate();
+  const currentUser = JSON.parse(localStorage.getItem("user"));
+  const currentUserId = currentUser?._id || currentUser?.id;
+
+  // --- STATES ---
+  const [conversations, setConversations] = useState([]);
+  const [messages, setMessages] = useState([]);
+  const [activeConversation, setActiveConversation] = useState(null);
+  const [inputText, setInputText] = useState("");
+  const [activeTab] = useState("/messages");
+  const [pendingCount, setPendingCount] = useState(0);
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [friendsList, setFriendsList] = useState([]);
+  const [contextMenu, setContextMenu] = useState(null); // { msgId }
+  const [editingMsgId, setEditingMsgId] = useState(null); // ID tin đang sửa
+  const [editText, setEditText] = useState(""); // Nội dung đang sửa
+
+  const openNewChatModal = async () => {
+    setShowNewChatModal(true);
+    try {
+      const res = await API.get("/connections/friends");
+      if (res.data.success) {
+        setFriendsList(res.data.data);
+      }
+    } catch (error) {
+      console.error("Lỗi lấy danh sách bạn bè:", error);
+    }
+  };
+
+  // Hàm bắt đầu nhắn tin với 1 người bạn
+  const startNewChat = async (friendId) => {
+    try {
+      // Gọi API tạo hoặc lấy cuộc trò chuyện (đã viết ở bước trước)
+      const res = await API.post("/conversations", { receiverId: friendId });
+      if (res.data.success) {
+        const newConv = res.data.data;
+
+        // Kiểm tra xem đoạn chat này đã có ở cột trái chưa, chưa thì push vào đầu
+        if (!conversations.find((c) => c._id === newConv._id)) {
+          setConversations([newConv, ...conversations]);
+        }
+
+        // Mở khung chat đó lên và đóng bảng danh sách bạn bè
+        setActiveConversation(newConv);
+        setShowNewChatModal(false);
+      }
+    } catch (error) {
+      console.error("Lỗi tạo phòng chat:", error);
+      alert("Không thể tạo cuộc trò chuyện lúc này.");
+    }
+  };
+
+  // Dùng để tự động cuộn xuống tin nhắn mới nhất
+  const messagesEndRef = useRef(null);
+  const socket = useRef();
+  const socketInitialized = useRef(false); // Guard chống StrictMode chạy effect 2 lần
+  const isSending = useRef(false); // Guard chống gửi 2 lần cùng lúc
+  const [arrivalMessage, setArrivalMessage] = useState(null);
+
+  // --- EFFECTS ---
+  // 1. Kiểm tra đăng nhập và lấy dữ liệu ban đầu
+  useEffect(() => {
+    if (!currentUser) {
+      navigate("/login");
+      return;
+    }
+    fetchConversations();
+    fetchPendingCount();
+  }, []);
+
+  // 2. Tự động lấy tin nhắn khi chọn một cuộc trò chuyện khác
+  useEffect(() => {
+    if (activeConversation) {
+      fetchMessages(activeConversation._id);
+    }
+  }, [activeConversation]);
+
+  // 3. Tự động cuộn xuống cuối mỗi khi mảng messages thay đổi
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    // Guard: StrictMode gọi effect 2 lần trong dev → tạo 2 socket
+    if (socketInitialized.current) return;
+    socketInitialized.current = true;
+
+    socket.current = io("http://localhost:5000");
+
+    socket.current.on("getMessage", (data) => {
+      setArrivalMessage(data);
+    });
+
+    // Lắng nghe sự kiện thu hồi tin nhắn từ người kia
+    socket.current.on("messageRecalled", ({ messageId }) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === messageId
+            ? { ...msg, isRecalled: true, text: "Tin nhắn đã bị thu hồi" }
+            : msg,
+        ),
+      );
+    });
+
+    // Lắng nghe sự kiện sửa tin nhắn từ người kia
+    socket.current.on("messageEdited", ({ messageId, newText }) => {
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg._id === messageId
+            ? { ...msg, text: newText, isEdited: true }
+            : msg,
+        ),
+      );
+    });
+
+    return () => {
+      socket.current?.disconnect();
+      socketInitialized.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      socket.current.emit("addUser", currentUserId);
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!arrivalMessage || !activeConversation) return;
+
+    // Xác định senderId dạng string để so sánh
+    const senderIdStr =
+      arrivalMessage.senderId?._id?.toString() ||
+      arrivalMessage.senderId?.toString();
+
+    // Chỉ thêm nếu là tin nhắn từ người kia (không phải của chính mình đã add rồi)
+    const isFromOther = senderIdStr !== currentUserId;
+
+    // Kiểm tra tin nhắn này có thuộc conversation đang mở không
+    const belongsToCurrentConv = activeConversation.members.some(
+      (m) => m._id === senderIdStr || m._id?.toString() === senderIdStr,
+    );
+
+    if (isFromOther && belongsToCurrentConv) {
+      // Dedup: không thêm nếu _id đã tồn tại
+      setMessages((prev) => {
+        if (prev.some((msg) => msg._id === arrivalMessage._id)) return prev;
+        return [...prev, arrivalMessage];
+      });
+    }
+  }, [arrivalMessage, activeConversation]);
+
+  // --- API CALLS ---
+  const fetchPendingCount = async () => {
+    try {
+      const res = await API.get("/connections/requests/pending");
+      if (res.data.success) setPendingCount(res.data.data.length);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
+  const fetchConversations = async () => {
+    try {
+      const res = await API.get("/conversations");
+      if (res.data.success) {
+        setConversations(res.data.data);
+      }
+    } catch (error) {
+      console.error("Lỗi lấy danh sách chat:", error);
+    }
+  };
+
+  const fetchMessages = async (conversationId) => {
+    try {
+      const res = await API.get(`/messages/${conversationId}`);
+      if (res.data.success) {
+        setMessages(res.data.data);
+      }
+    } catch (error) {
+      console.error("Lỗi lấy tin nhắn:", error);
+    }
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputText.trim() || !activeConversation) return;
+    if (isSending.current) return; // Chống double-send
+    isSending.current = true;
+
+    const textToSend = inputText;
+    setInputText(""); // Xóa input ngay để UX mượt
+
+    try {
+      const res = await API.post("/messages", {
+        conversationId: activeConversation._id,
+        text: textToSend,
+      });
+
+      if (res.data.success) {
+        const newMessage = res.data.data;
+
+        // 1. Cập nhật tin nhắn vào khung chat (chỉ 1 lần)
+        setMessages((prev) => [...prev, newMessage]);
+
+        // 2. Đẩy cuộc trò chuyện lên đầu danh sách và cập nhật lastMessage
+        setConversations((prev) => {
+          const updatedConvos = prev.map((conv) => {
+            if (conv._id === activeConversation._id) {
+              return {
+                ...conv,
+                lastMessage: newMessage.text,
+                updatedAt: new Date(),
+              };
+            }
+            return conv;
+          });
+          // Sắp xếp lại: cái nào mới cập nhật thì lên đầu
+          return updatedConvos.sort(
+            (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
+          );
+        });
+
+        // 3. Bắn tin nhắn qua Socket cho người nhận
+        const receiver = getOtherUser(activeConversation);
+        if (receiver) {
+          socket.current.emit("sendMessage", {
+            senderId: currentUserId,
+            receiverId: receiver._id,
+            text: textToSend,
+            messageData: newMessage, // Gửi toàn bộ data tin nhắn vừa lưu DB
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Gửi tin nhắn thất bại", error);
+      setInputText(textToSend); // Khôi phục text nếu gửi thất bại
+      alert("Không thể gửi tin nhắn lúc này.");
+    } finally {
+      isSending.current = false; // Release lock
+    }
+  };
+  // --- THU HỒI TIN NHẬN ---
+  const handleRecallMessage = async (messageId) => {
+    setContextMenu(null);
+    try {
+      const res = await API.patch(`/messages/recall/${messageId}`);
+      if (res.data.success) {
+        // Cập nhật state local
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg._id === messageId
+              ? { ...msg, isRecalled: true, text: "Tin nhắn đã bị thu hồi" }
+              : msg,
+          ),
+        );
+        // Broadcast cho người nhận biết qua socket
+        const receiver = getOtherUser(activeConversation);
+        if (receiver) {
+          socket.current.emit("recallMessage", {
+            messageId,
+            conversationId: activeConversation._id,
+            receiverId: receiver._id,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Thu hồi tin nhắn thất bại:", error);
+      alert("Không thể thu hồi tin nhắn.");
+    }
+  };
+
+  // --- SỬa TIN NHẬN ---
+  const handleEditMessage = async (messageId) => {
+    if (!editText.trim()) return;
+    try {
+      const res = await API.patch(`/messages/edit/${messageId}`, { text: editText });
+      if (res.data.success) {
+        // Cập nhật local state
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg._id === messageId
+              ? { ...msg, text: editText.trim(), isEdited: true }
+              : msg,
+          ),
+        );
+        // Broadcast cho người nhận biết qua socket
+        const receiver = getOtherUser(activeConversation);
+        if (receiver) {
+          socket.current.emit("editMessage", {
+            messageId,
+            newText: editText.trim(),
+            receiverId: receiver._id,
+          });
+        }
+        // Đóng chế độ sửa
+        setEditingMsgId(null);
+        setEditText("");
+      }
+    } catch (error) {
+      console.error("Sửa tin nhắn thất bại:", error);
+      alert("Không thể sửa tin nhắn.");
+    }
+  };
+
+  // Đóng context menu khi click ra ngoài
+  const handleGlobalClick = () => {
+    if (contextMenu) setContextMenu(null);
+  };
+
+  // Tìm thông tin người đang chat cùng (lọc bản thân ra khỏi mảng members)
+  const getOtherUser = (conversation) => {
+    if (!conversation || !conversation.members) return null;
+    return conversation.members.find((m) => m._id !== currentUserId);
+  };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: C.bg, fontFamily: "'Inter', sans-serif", color: C.textPri, overflow: 'hidden' }}>
-
-      {/* ── TOP NAV ── */}
-      <nav style={{ height: 56, background: C.panel, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 24px', flexShrink: 0, zIndex: 10 }}>
-        <span style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 20, color: C.accent, letterSpacing: '-0.5px' }}>The Curator</span>
-
-        {/* Search */}
-        <div style={{ display: 'flex', alignItems: 'center', background: C.panelAlt, borderRadius: 999, padding: '7px 16px', gap: 8, minWidth: 260 }}>
-          <svg width={14} height={14} fill="none" stroke={C.textSec} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-          <input placeholder="Search conversations..." style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: 13, color: C.textPri, width: 200 }} />
-        </div>
-
-        {/* Nav Icons */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          {[
-            { title: 'Home', path: 'M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z' },
-            { title: 'Explore', path: 'M12 2a10 10 0 100 20A10 10 0 0012 2zm0 0v20M2 12h20' },
-          ].map(({ title, path }) => (
-            <IconBtn key={title} title={title}>
-              <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d={path}/></svg>
-            </IconBtn>
-          ))}
-          {/* Messages (active) */}
-          <div style={{ background: C.accent, borderRadius: 10, padding: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width={20} height={20} fill="white" viewBox="0 0 24 24"><path d="M20 2H4a2 2 0 00-2 2v18l4-4h14a2 2 0 002-2V4a2 2 0 00-2-2z"/></svg>
+    <div style={styles.container} onClick={handleGlobalClick}>
+      {/* ===== TOP NAVBAR ===== */}
+      <nav style={styles.navbar}>
+        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
+          <span style={styles.logo}>Tồn Lùng</span>
+          <div style={styles.searchBar}>
+            <span
+              className="material-symbols-outlined"
+              style={{ color: "#6c759e" }}
+            >
+              search
+            </span>
+            <input
+              type="text"
+              placeholder="Tìm kiếm tin nhắn..."
+              style={styles.searchInput}
+            />
           </div>
-          <IconBtn title="Notifications">
-            <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 17H9m3 4a3 3 0 01-3-3H6a2 2 0 01-2-2V8a6 6 0 1112 0v8a2 2 0 01-2 2h-3a3 3 0 01-3 3z"/></svg>
-          </IconBtn>
-          <Avatar src="https://i.pravatar.cc/150?img=11" size={34} />
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <div
+            style={{
+              position: "relative",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+            }}
+            onClick={() => navigate("/friends")}
+          >
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: "28px", color: "#6c759e" }}
+            >
+              notifications
+            </span>
+            {pendingCount > 0 && (
+              <span style={styles.badge}>{pendingCount}</span>
+            )}
+          </div>
+          <img
+            src={currentUser?.avatarUrl}
+            alt="Profile"
+            style={{ ...styles.navAvatar, cursor: "pointer" }}
+            onClick={() => navigate("/profile")}
+          />
+          <button
+            onClick={() => {
+              localStorage.clear();
+              navigate("/login");
+            }}
+            style={styles.logoutBtn}
+          >
+            Đăng xuất
+          </button>
         </div>
       </nav>
 
-      {/* ── BODY (3 columns) ── */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-
-        {/* ── LEFT: Conversation List ── */}
-        <aside style={{ width: 300, background: C.panel, borderRight: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'hidden' }}>
-          {/* Header */}
-          <div style={{ padding: '20px 20px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h2 style={{ fontFamily: "'Plus Jakarta Sans', sans-serif", fontWeight: 800, fontSize: 18, margin: 0 }}>Messages</h2>
-            <button style={{ background: C.accent, border: 'none', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-              <svg width={16} height={16} fill="white" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.21a1 1 0 000-1.41l-2.34-2.34a1 1 0 00-1.41 0L15.13 5.13l3.75 3.75 1.83-1.84z"/></svg>
-            </button>
-          </div>
-
-          {/* Stories */}
-          <div style={{ display: 'flex', gap: 12, padding: '0 20px 16px', overflowX: 'auto' }}>
-            {stories.map(s => (
-              <div key={s.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, cursor: 'pointer', flexShrink: 0 }}>
-                <div style={{ padding: 2, borderRadius: '50%', background: s.isSelf ? C.panelAlt : 'linear-gradient(135deg,#3b7ef8,#a855f7)', position: 'relative' }}>
-                  <Avatar src={s.src} size={48} online={s.online} />
-                  {s.isSelf && (
-                    <div style={{ position: 'absolute', bottom: 0, right: 0, width: 18, height: 18, background: C.accent, borderRadius: '50%', border: `2px solid ${C.panel}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ color: 'white', fontSize: 12, lineHeight: 1 }}>+</span>
-                    </div>
-                  )}
-                </div>
-                <span style={{ fontSize: 11, color: C.textSec }}>{s.name}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Conversation Items */}
-          <div style={{ flex: 1, overflowY: 'auto' }}>
-            {conversations.map(conv => (
-              <div key={conv.id} style={{
-                display: 'flex', alignItems: 'center', gap: 12, padding: '12px 20px', cursor: 'pointer',
-                background: conv.active ? C.panelAlt : 'transparent',
-                borderLeft: conv.active ? `3px solid ${C.accent}` : '3px solid transparent',
-                transition: 'background 0.15s',
-              }}
-                onMouseEnter={e => { if (!conv.active) e.currentTarget.style.background = `${C.panelAlt}80`; }}
-                onMouseLeave={e => { if (!conv.active) e.currentTarget.style.background = 'transparent'; }}
-              >
-                <Avatar src={conv.src} size={44} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 2 }}>
-                    <span style={{ fontWeight: 600, fontSize: 14 }}>{conv.name}</span>
-                    <span style={{ fontSize: 11, color: conv.unread ? C.accent : C.textSec, flexShrink: 0, marginLeft: 8 }}>{conv.time}</span>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 12, color: C.textSec, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{conv.preview}</span>
-                    {conv.unread && <span style={{ width: 8, height: 8, borderRadius: '50%', background: C.badge, flexShrink: 0 }} />}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </aside>
-
-        {/* ── CENTER: Chat Window ── */}
-        <main style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: C.bg, minWidth: 0 }}>
-          {/* Chat Header */}
-          <div style={{ height: 60, borderBottom: `1px solid ${C.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 20px', flexShrink: 0, background: C.panel }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Avatar src="https://i.pravatar.cc/150?img=47" size={38} online />
-              <div>
-                <p style={{ fontWeight: 700, fontSize: 15, margin: 0 }}>Elena Vance</p>
-                <p style={{ fontSize: 12, margin: 0, color: C.online }}>Active now</p>
-              </div>
-            </div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              <IconBtn title="Call">
-                <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>
-              </IconBtn>
-              <IconBtn title="Video">
-                <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
-              </IconBtn>
+      {/* ===== MAIN LAYOUT ===== */}
+      <div style={styles.mainLayout}>
+        {/* ===== LEFT SIDEBAR ===== */}
+        <aside style={styles.leftSidebar}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              cursor: "pointer",
+            }}
+            onClick={() => navigate("/profile")}
+          >
+            <img
+              src={currentUser?.avatarUrl}
+              alt="Me"
+              style={styles.profileImg}
+            />
+            <div>
+              <p style={{ fontWeight: 700, fontSize: "14px", margin: 0 }}>
+                {currentUser?.username}
+              </p>
+              <p style={{ fontSize: "12px", color: "#6c759e", margin: 0 }}>
+                @{currentUser?.username?.toLowerCase()}
+              </p>
             </div>
           </div>
-
-          {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            {/* Date separator */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ flex: 1, height: 1, background: C.border }} />
-              <span style={{ fontSize: 11, color: C.textSec, fontWeight: 600, letterSpacing: 1 }}>YESTERDAY</span>
-              <div style={{ flex: 1, height: 1, background: C.border }} />
-            </div>
-
-            {messages.map(msg => {
-              const isMe = msg.from === 'me';
-
-              if (msg.type === 'typing') return (
-                <div key={msg.id} style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-                  <Avatar src="https://i.pravatar.cc/150?img=47" size={32} online />
-                  <div>
-                    <div style={{ background: C.bubbleIn, borderRadius: '18px 18px 18px 4px', padding: '12px 16px', display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-                      {[0, 0.2, 0.4].map((d, i) => (
-                        <span key={i} style={{ width: 8, height: 8, borderRadius: '50%', background: C.textSec, animationDelay: `${d}s`, animation: 'bounce 1s infinite' }} />
-                      ))}
-                    </div>
-                    <p style={{ fontSize: 11, color: C.textSec, margin: '4px 0 0', paddingLeft: 4 }}>Just now</p>
-                  </div>
-                </div>
-              );
-
-              return (
-                <div key={msg.id} style={{ display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', gap: 4 }}>
-                  {!isMe && (
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10 }}>
-                      <Avatar src="https://i.pravatar.cc/150?img=47" size={32} />
-                      <div style={{ maxWidth: '70%' }}>
-                        {msg.text && (
-                          <div style={{ background: C.bubbleIn, borderRadius: '18px 18px 18px 4px', padding: '12px 16px', fontSize: 14, lineHeight: 1.5 }}>
-                            {msg.text}
-                          </div>
-                        )}
-                        {msg.images && (
-                          <div style={{ display: 'flex', gap: 6, marginTop: msg.text ? 6 : 0 }}>
-                            {msg.images.map((src, i) => (
-                              <img key={i} src={src} alt="" style={{ width: 140, height: 100, objectFit: 'cover', borderRadius: 12 }} />
-                            ))}
-                          </div>
-                        )}
-                        {msg.time && <p style={{ fontSize: 11, color: C.textSec, margin: '4px 0 0', paddingLeft: 4 }}>{msg.time}</p>}
-                      </div>
-                    </div>
-                  )}
-                  {isMe && (
-                    <div style={{ maxWidth: '70%', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
-                      <div style={{ background: C.bubbleOut, borderRadius: '18px 18px 4px 18px', padding: '12px 16px', fontSize: 14, lineHeight: 1.5 }}>
-                        {msg.text}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                        <span style={{ fontSize: 11, color: C.textSec }}>{msg.time}</span>
-                        {msg.read && (
-                          <svg width={14} height={14} viewBox="0 0 24 24" fill={C.accent}><path d="M9 12l2 2 4-4m5 .5a9.5 9.5 0 11-19 0 9.5 9.5 0 0119 0z" stroke={C.accent} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" fill="none"/></svg>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Message Input */}
-          <div style={{ padding: '12px 20px', background: C.panel, borderTop: `1px solid ${C.border}`, flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: C.panelAlt, borderRadius: 999, padding: '8px 8px 8px 16px' }}>
-              <IconBtn title="More">
-                <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
-              </IconBtn>
-              <IconBtn title="Media">
-                <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-              </IconBtn>
-              <input
-                value={inputText}
-                onChange={e => setInputText(e.target.value)}
-                placeholder="Type a message..."
-                style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', fontSize: 14, color: C.textPri }}
-              />
-              <IconBtn title="Emoji">
-                <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-              </IconBtn>
-              <button style={{ background: C.accent, border: 'none', borderRadius: '50%', width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0, transition: 'opacity 0.2s' }}>
-                <svg width={18} height={18} fill="white" viewBox="0 0 24 24"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-              </button>
-            </div>
-          </div>
-        </main>
-
-        {/* ── RIGHT: Contact Info ── */}
-        <aside style={{ width: 280, background: C.panel, borderLeft: `1px solid ${C.border}`, display: 'flex', flexDirection: 'column', flexShrink: 0, overflowY: 'auto' }}>
-          {/* Profile */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '28px 20px 20px', borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ padding: 3, borderRadius: '50%', background: 'linear-gradient(135deg,#3b7ef8,#a855f7)', marginBottom: 12 }}>
-              <Avatar src="https://i.pravatar.cc/150?img=47" size={80} />
-            </div>
-            <p style={{ fontWeight: 800, fontSize: 17, margin: '0 0 4px', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>Elena Vance</p>
-            <p style={{ fontSize: 13, color: C.textSec, margin: 0 }}>@elenavance</p>
-
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', gap: 24, marginTop: 20 }}>
-              {[
-                { label: 'Profile',
-                  icon: <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg> },
-                { label: 'Mute',
-                  icon: <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/></svg> },
-                { label: 'Block',
-                  icon: <svg width={20} height={20} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/></svg> },
-              ].map(({ label, icon }) => (
-                <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: C.panelAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textSec }}>
-                    {icon}
-                  </div>
-                  <span style={{ fontSize: 11, color: C.textSec }}>{label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Bio */}
-          <div style={{ padding: '18px 20px', borderBottom: `1px solid ${C.border}` }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.textSec, letterSpacing: 1, margin: '0 0 8px', textTransform: 'uppercase' }}>Bio</p>
-            <p style={{ fontSize: 13, color: C.textPri, lineHeight: 1.6, margin: 0 }}>
-              Creative Director &amp; Digital Artist. Obsessed with minimalist architecture and fluid design systems.
-            </p>
-          </div>
-
-          {/* Shared Media */}
-          <div style={{ padding: '18px 20px', borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <p style={{ fontSize: 11, fontWeight: 700, color: C.textSec, letterSpacing: 1, margin: 0, textTransform: 'uppercase' }}>Shared Media</p>
-              <button style={{ background: 'transparent', border: 'none', color: C.accent, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>View All</button>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 4 }}>
-              {sharedMedia.map((src, i) => (
-                <img key={i} src={src} alt="" style={{ width: '100%', aspectRatio: '1', objectFit: 'cover', borderRadius: 8 }} />
-              ))}
-              <div style={{ width: '100%', aspectRatio: '1', background: C.panelAlt, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                <span style={{ color: C.accent, fontSize: 14, fontWeight: 700 }}>+12</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Privacy & Support */}
-          <div style={{ padding: '18px 20px' }}>
-            <p style={{ fontSize: 11, fontWeight: 700, color: C.textSec, letterSpacing: 1, margin: '0 0 12px', textTransform: 'uppercase' }}>Privacy &amp; Support</p>
+          <nav style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
             {[
-              { icon: '⚠', label: 'Report Elena' },
-              { icon: '🗑', label: 'Delete Conversation' },
-            ].map(({ icon, label }) => (
-              <button key={label} style={{
-                width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                background: C.panelAlt, border: 'none', borderRadius: 10, padding: '12px 14px',
-                color: C.textSec, fontSize: 13, cursor: 'pointer', marginBottom: 8, textAlign: 'left',
-              }}
-                onMouseEnter={e => e.currentTarget.style.background = C.border}
-                onMouseLeave={e => e.currentTarget.style.background = C.panelAlt}
+              { icon: "home", label: "Trang chủ", path: "/" },
+              { icon: "group", label: "Bạn bè", path: "/friends" },
+              { icon: "person", label: "Hồ sơ", path: "/profile" },
+              { icon: "explore", label: "Khám phá", path: "#" },
+              { icon: "message", label: "Tin nhắn", path: "/messages" },
+              { icon: "settings", label: "Cài đặt", path: "/settings" },
+            ].map((item) => (
+              <a
+                key={item.icon}
+                href={item.path}
+                style={{
+                  ...styles.navLink,
+                  backgroundColor:
+                    activeTab === item.path ? "#1877F2" : "transparent",
+                  color: activeTab === item.path ? "#fff" : "#6c759e",
+                }}
+                onClick={(e) => {
+                  if (item.path.startsWith("/")) {
+                    e.preventDefault();
+                    navigate(item.path);
+                  }
+                }}
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 14 }}>{icon}</span>
-                  {label}
-                </div>
-                <span style={{ fontSize: 16 }}>›</span>
-              </button>
+                <span className="material-symbols-outlined">{item.icon}</span>
+                {item.label}
+              </a>
             ))}
-          </div>
+          </nav>
         </aside>
+
+        {/* ===== MESSAGE UI ===== */}
+        <main style={styles.messageBox}>
+          {/* --- LEFT: Conversation List --- */}
+          <section style={styles.convoList}>
+            <div style={styles.convoHeader}>
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: "18px",
+                  fontWeight: 800,
+                  color: "#0f1419",
+                }}
+              >
+                Tin nhắn
+              </h2>
+              <button style={styles.iconBtnPrimary} onClick={openNewChatModal}>
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: "20px" }}
+                >
+                  edit_square
+                </span>
+              </button>
+            </div>
+
+            <div style={styles.listWrapper}>
+              {conversations.length === 0 ? (
+                <p
+                  style={{
+                    textAlign: "center",
+                    color: "#6c759e",
+                    marginTop: "20px",
+                    fontSize: "14px",
+                  }}
+                >
+                  Chưa có tin nhắn nào.
+                </p>
+              ) : (
+                conversations.map((conv) => {
+                  const otherUser = getOtherUser(conv);
+                  const isActive = activeConversation?._id === conv._id;
+
+                  return (
+                    <div
+                      key={conv._id}
+                      onClick={() => setActiveConversation(conv)}
+                      style={{
+                        ...styles.convItem,
+                        backgroundColor: isActive ? "#e7f3ff" : "transparent",
+                        borderLeft: isActive
+                          ? "3px solid #1877F2"
+                          : "3px solid transparent",
+                      }}
+                    >
+                      <div style={styles.avatarWrap}>
+                        <img
+                          src={
+                            otherUser?.avatarUrl ||
+                            "https://via.placeholder.com/150"
+                          }
+                          alt=""
+                          style={styles.convAvatar}
+                        />
+                      </div>
+                      <div style={styles.convDetails}>
+                        <div style={styles.convTitleRow}>
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              fontSize: "14px",
+                              color: "#0f1419",
+                            }}
+                          >
+                            {otherUser?.username || "Người dùng"}
+                          </span>
+                          <span style={{ fontSize: "12px", color: "#6c759e" }}>
+                            {conv.updatedAt
+                              ? moment(conv.updatedAt).fromNow(true)
+                              : ""}
+                          </span>
+                        </div>
+                        <div style={styles.convPreviewRow}>
+                          <span
+                            style={{
+                              ...styles.convPreview,
+                              color: "#6c759e",
+                              fontWeight: 400,
+                            }}
+                          >
+                            {conv.lastMessage || "Chưa có tin nhắn"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </section>
+
+          {/* --- RIGHT: Chat Window --- */}
+          <section style={styles.chatWindow}>
+            {activeConversation ? (
+              <>
+                {/* Chat Header */}
+                <div style={styles.chatHeader}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "12px",
+                    }}
+                  >
+                    <div style={styles.avatarWrap}>
+                      <img
+                        src={getOtherUser(activeConversation)?.avatarUrl}
+                        alt=""
+                        style={styles.convAvatar}
+                      />
+                      <span style={styles.onlineBadge} />
+                    </div>
+                    <div>
+                      <h3
+                        style={{
+                          margin: 0,
+                          fontSize: "15px",
+                          fontWeight: 700,
+                          color: "#0f1419",
+                        }}
+                      >
+                        {getOtherUser(activeConversation)?.username}
+                      </h3>
+                      <p
+                        style={{
+                          margin: 0,
+                          fontSize: "13px",
+                          color: "#1877F2",
+                        }}
+                      >
+                        Đang hoạt động
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px" }}>
+                    <button style={styles.iconBtnOutlined}>
+                      <span className="material-symbols-outlined">call</span>
+                    </button>
+                    <button style={styles.iconBtnOutlined}>
+                      <span className="material-symbols-outlined">
+                        videocam
+                      </span>
+                    </button>
+                    <button style={styles.iconBtnOutlined}>
+                      <span className="material-symbols-outlined">info</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Message Thread */}
+                <div style={styles.chatThread}>
+                  {messages.length === 0 ? (
+                    <div
+                      style={{
+                        textAlign: "center",
+                        color: "#6c759e",
+                        marginTop: "auto",
+                        marginBottom: "auto",
+                      }}
+                    >
+                      Hãy gửi lời chào đến{" "}
+                      {getOtherUser(activeConversation)?.username}!
+                    </div>
+                  ) : (
+                    messages.map((msg) => {
+                      // senderId có thể là object (sau populate) hoặc string (tin nhắn socket thô)
+                      const senderIdStr =
+                        msg.senderId?._id?.toString() ||
+                        msg.senderId?.toString();
+                      const isMe = senderIdStr === currentUserId;
+                      const isRecalled = msg.isRecalled;
+
+                      return (
+                        <div
+                          key={msg._id}
+                          style={{
+                            ...styles.msgWrapper,
+                            justifyContent: isMe ? "flex-end" : "flex-start",
+                          }}
+                        >
+                          {!isMe && (
+                            <img
+                              src={getOtherUser(activeConversation)?.avatarUrl}
+                              alt=""
+                              style={styles.msgAvatar}
+                            />
+                          )}
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              alignItems: isMe ? "flex-end" : "flex-start",
+                              maxWidth: "70%",
+                              position: "relative",
+                            }}
+                          >
+                            {/* Nút 3 chấm chỉ hiển thị khi là tin của mình và chưa thu hồi và không đang sửa */}
+                            {isMe && !isRecalled && editingMsgId !== msg._id && (
+                              <button
+                                style={styles.msgMenuBtn}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setContextMenu(
+                                    contextMenu?.msgId === msg._id
+                                      ? null
+                                      : { msgId: msg._id },
+                                  );
+                                }}
+                                title="Tùy chọn"
+                              >
+                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>more_horiz</span>
+                              </button>
+                            )}
+
+                            {/* Context Menu */}
+                            {contextMenu?.msgId === msg._id && (
+                              <div
+                                style={styles.contextMenu}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <button
+                                  style={styles.contextMenuItem}
+                                  onClick={() => {
+                                    setContextMenu(null);
+                                    setEditingMsgId(msg._id);
+                                    setEditText(msg.text);
+                                  }}
+                                >
+                                  <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>edit</span>
+                                  Sửa tin nhắn
+                                </button>
+                                <button
+                                  style={styles.contextMenuItem}
+                                  onClick={() => handleRecallMessage(msg._id)}
+                                >
+                                  <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>undo</span>
+                                  Thu hồi tin nhắn
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Nội dung tin nhắn / Inline edit */}
+                            {editingMsgId === msg._id ? (
+                              /* Chế độ sửa inline */
+                              <div style={styles.editInputWrapper} onClick={(e) => e.stopPropagation()}>
+                                <input
+                                  autoFocus
+                                  value={editText}
+                                  onChange={(e) => setEditText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter") { e.preventDefault(); handleEditMessage(msg._id); }
+                                    if (e.key === "Escape") { setEditingMsgId(null); setEditText(""); }
+                                  }}
+                                  style={styles.editInput}
+                                />
+                                <div style={{ display: "flex", gap: "6px", marginTop: "6px", justifyContent: "flex-end" }}>
+                                  <button
+                                    style={styles.editCancelBtn}
+                                    onClick={() => { setEditingMsgId(null); setEditText(""); }}
+                                  >Hủy</button>
+                                  <button
+                                    style={styles.editSaveBtn}
+                                    onClick={() => handleEditMessage(msg._id)}
+                                  >Lưu</button>
+                                </div>
+                              </div>
+                            ) : isRecalled ? (
+                              <div style={isMe ? styles.bubbleRecalledOut : styles.bubbleRecalledIn}>
+                                <span className="material-symbols-outlined" style={{ fontSize: "14px", verticalAlign: "middle", marginRight: "4px" }}>block</span>
+                                Tin nhắn đã bị thu hồi
+                              </div>
+                            ) : (
+                              msg.text && (
+                                <div style={isMe ? styles.bubbleOut : styles.bubbleIn}>
+                                  {msg.text}
+                                </div>
+                              )
+                            )}
+                            <div style={styles.msgMeta}>
+                              {moment(msg.createdAt).format("LT")}
+                              {msg.isEdited && !isRecalled && (
+                                <span style={{ fontStyle: "italic", fontSize: "10px" }}>(đã chỉnh sửa)</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                  {/* Element ẩn để auto-scroll scroll xuống cuổi */}
+                  <div ref={messagesEndRef} />
+                </div>
+
+                {/* Input Box */}
+                <div style={styles.inputArea}>
+                  <button style={styles.inputIconBtn}>
+                    <span className="material-symbols-outlined">
+                      add_circle
+                    </span>
+                  </button>
+                  <button style={styles.inputIconBtn}>
+                    <span className="material-symbols-outlined">image</span>
+                  </button>
+                  <div style={styles.inputWrapper}>
+                    <input
+                      type="text"
+                      placeholder="Nhập tin nhắn..."
+                      value={inputText}
+                      onChange={(e) => setInputText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault(); // Ngăn browser tự trigger click vào button
+                          handleSendMessage();
+                        }
+                      }}
+                      style={styles.chatInput}
+                    />
+                    <button style={styles.emojiBtn}>
+                      <span className="material-symbols-outlined">mood</span>
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleSendMessage}
+                    style={
+                      inputText.trim() ? styles.sendBtnActive : styles.sendBtn
+                    }
+                  >
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ marginLeft: "2px" }}
+                    >
+                      send
+                    </span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              // Empty State khi chưa chọn Chat
+              <div
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  height: "100%",
+                  color: "#6c759e",
+                }}
+              >
+                <span
+                  className="material-symbols-outlined"
+                  style={{
+                    fontSize: "64px",
+                    color: "#dce2f5",
+                    marginBottom: "16px",
+                  }}
+                >
+                  forum
+                </span>
+                <h3 style={{ margin: 0, color: "#0f1419" }}>
+                  Tin nhắn của bạn
+                </h3>
+                <p style={{ marginTop: "8px" }}>
+                  Chọn một người bạn bè để bắt đầu trò chuyện.
+                </p>
+              </div>
+            )}
+          </section>
+        </main>
+        {/* ===== MODAL TẠO TIN NHẮN MỚI ===== */}
+        {showNewChatModal && (
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setShowNewChatModal(false)}
+          >
+            <div
+              style={styles.modalContent}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div style={styles.modalHeader}>
+                <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "bold" }}>
+                  Tin nhắn mới
+                </h3>
+                <button
+                  style={styles.closeModalBtn}
+                  onClick={() => setShowNewChatModal(false)}
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <div style={styles.modalBody}>
+                <div
+                  style={{ padding: "16px", borderBottom: "1px solid #eff3f4" }}
+                >
+                  <input
+                    type="text"
+                    placeholder="Tìm kiếm bạn bè..."
+                    style={{
+                      width: "100%",
+                      padding: "10px 16px",
+                      borderRadius: "8px",
+                      border: "1px solid #e5e7eb",
+                      outline: "none",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                </div>
+
+                <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+                  {friendsList.length > 0 ? (
+                    friendsList.map((friend) => (
+                      <div
+                        key={friend._id}
+                        style={styles.friendItem}
+                        onClick={() => startNewChat(friend._id)}
+                      >
+                        <img
+                          src={
+                            friend.avatarUrl ||
+                            "https://via.placeholder.com/150"
+                          }
+                          alt=""
+                          style={styles.friendAvatar}
+                        />
+                        <div>
+                          <p
+                            style={{
+                              margin: 0,
+                              fontWeight: 600,
+                              color: "#0f1419",
+                              fontSize: "15px",
+                            }}
+                          >
+                            {friend.username}
+                          </p>
+                          <p
+                            style={{
+                              margin: 0,
+                              color: "#6c759e",
+                              fontSize: "13px",
+                            }}
+                          >
+                            @{friend.username.toLowerCase()}
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p
+                      style={{
+                        textAlign: "center",
+                        color: "#6c759e",
+                        padding: "20px",
+                      }}
+                    >
+                      Chưa có bạn bè nào để nhắn tin.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@700;800&family=Inter:wght@400;500;600&display=swap');
-        @keyframes bounce {
-          0%, 60%, 100% { transform: translateY(0); }
-          30% { transform: translateY(-5px); }
-        }
-        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: ${C.border}; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #dce2f5; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #b0b9d1; }
       `}</style>
     </div>
   );
 }
+
+// --- Styles (Giữ nguyên y hệt thiết kế trước) ---
+const styles = {
+  container: {
+    minHeight: "100vh",
+    backgroundColor: "#f0f2f5",
+    fontFamily: "'Inter', sans-serif",
+    color: "#232c51",
+  },
+  navbar: {
+    position: "fixed",
+    top: 0,
+    width: "100%",
+    zIndex: 50,
+    backgroundColor: "rgba(255,255,255,0.95)",
+    backdropFilter: "blur(10px)",
+    borderBottom: "1px solid #e5e7eb",
+    height: "64px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "0 24px",
+    boxSizing: "border-box",
+  },
+  logo: { fontSize: "22px", fontWeight: 800, color: "#1877F2" },
+  searchBar: {
+    display: "flex",
+    alignItems: "center",
+    backgroundColor: "#f0f2f5",
+    padding: "8px 16px",
+    borderRadius: "999px",
+    gap: "8px",
+    width: "240px",
+  },
+  searchInput: {
+    background: "transparent",
+    border: "none",
+    outline: "none",
+    fontSize: "14px",
+    width: "100%",
+    color: "#0f1419",
+  },
+  navAvatar: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "50%",
+    objectFit: "cover",
+  },
+  logoutBtn: {
+    border: "none",
+    background: "none",
+    color: "#f44336",
+    cursor: "pointer",
+    fontSize: "13px",
+  },
+  badge: {
+    position: "absolute",
+    top: "-5px",
+    right: "-5px",
+    backgroundColor: "#e74c3c",
+    color: "white",
+    borderRadius: "50%",
+    padding: "2px 6px",
+    fontSize: "10px",
+    fontWeight: "bold",
+  },
+
+  mainLayout: {
+    maxWidth: "1200px",
+    margin: "0 auto",
+    display: "flex",
+    gap: "24px",
+    paddingTop: "80px",
+    paddingLeft: "24px",
+    paddingRight: "24px",
+    height: "100vh",
+    boxSizing: "border-box",
+    paddingBottom: "20px",
+  },
+  leftSidebar: {
+    width: "220px",
+    flexShrink: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: "20px",
+  },
+  profileImg: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "50%",
+    objectFit: "cover",
+  },
+  navLink: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    padding: "10px 16px",
+    borderRadius: "10px",
+    textDecoration: "none",
+    fontSize: "15px",
+    fontWeight: 600,
+  },
+
+  messageBox: {
+    flex: 1,
+    backgroundColor: "#fff",
+    borderRadius: "14px",
+    boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
+    display: "flex",
+    overflow: "hidden",
+  },
+  convoList: {
+    width: "340px",
+    borderRight: "1px solid #eff3f4",
+    display: "flex",
+    flexDirection: "column",
+    backgroundColor: "#fff",
+  },
+  convoHeader: {
+    padding: "20px 20px 16px",
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderBottom: "1px solid #eff3f4",
+  },
+  iconBtnPrimary: {
+    background: "#f0f2f5",
+    border: "none",
+    borderRadius: "50%",
+    width: "36px",
+    height: "36px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    color: "#0f1419",
+  },
+
+  listWrapper: { flex: 1, overflowY: "auto" },
+  convItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    padding: "12px 20px",
+    cursor: "pointer",
+    transition: "background 0.2s",
+  },
+  avatarWrap: { position: "relative", display: "inline-block" },
+  convAvatar: {
+    width: "48px",
+    height: "48px",
+    borderRadius: "50%",
+    objectFit: "cover",
+  },
+  onlineBadge: {
+    position: "absolute",
+    bottom: "2px",
+    right: "2px",
+    width: "12px",
+    height: "12px",
+    backgroundColor: "#31a24c",
+    borderRadius: "50%",
+    border: "2px solid #fff",
+  },
+  convDetails: { flex: 1, minWidth: 0 },
+  convTitleRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    marginBottom: "4px",
+  },
+  convPreviewRow: { display: "flex", alignItems: "center", gap: "6px" },
+  convPreview: {
+    fontSize: "13px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    flex: 1,
+  },
+
+  chatWindow: {
+    flex: 1,
+    display: "flex",
+    flexDirection: "column",
+    backgroundColor: "#fff",
+  },
+  chatHeader: {
+    height: "72px",
+    padding: "0 24px",
+    borderBottom: "1px solid #eff3f4",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: "#fff",
+  },
+  iconBtnOutlined: {
+    background: "transparent",
+    border: "none",
+    color: "#1877F2",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    transition: "background 0.2s",
+  },
+
+  chatThread: {
+    flex: 1,
+    padding: "24px",
+    overflowY: "auto",
+    display: "flex",
+    flexDirection: "column",
+    gap: "16px",
+  },
+  msgWrapper: { display: "flex", gap: "12px", alignItems: "flex-end" },
+  msgAvatar: {
+    width: "32px",
+    height: "32px",
+    borderRadius: "50%",
+    objectFit: "cover",
+  },
+  bubbleIn: {
+    backgroundColor: "#f0f2f5",
+    color: "#0f1419",
+    borderRadius: "18px 18px 18px 4px",
+    padding: "12px 16px",
+    fontSize: "15px",
+    lineHeight: "1.5",
+    wordBreak: "break-word",
+  },
+  bubbleOut: {
+    backgroundColor: "#1877F2",
+    color: "#fff",
+    borderRadius: "18px 18px 4px 18px",
+    padding: "12px 16px",
+    fontSize: "15px",
+    lineHeight: "1.5",
+    wordBreak: "break-word",
+  },
+  // Bubble khi tin nhắn đã bị thu hồi
+  bubbleRecalledIn: {
+    backgroundColor: "transparent",
+    color: "#9aa0b4",
+    border: "1px dashed #c8cedf",
+    borderRadius: "18px 18px 18px 4px",
+    padding: "10px 14px",
+    fontSize: "13px",
+    fontStyle: "italic",
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+  },
+  bubbleRecalledOut: {
+    backgroundColor: "transparent",
+    color: "#9aa0b4",
+    border: "1px dashed #c8cedf",
+    borderRadius: "18px 18px 4px 18px",
+    padding: "10px 14px",
+    fontSize: "13px",
+    fontStyle: "italic",
+    display: "flex",
+    alignItems: "center",
+    gap: "4px",
+  },
+  // Nút 3 chấm hiện khi hover
+  msgMenuBtn: {
+    background: "#f0f2f5",
+    border: "none",
+    borderRadius: "50%",
+    width: "28px",
+    height: "28px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    marginBottom: "4px",
+    color: "#536471",
+    flexShrink: 0,
+  },
+  // Dropdown context menu
+  contextMenu: {
+    position: "absolute",
+    top: "32px",
+    right: 0,
+    backgroundColor: "#fff",
+    borderRadius: "12px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+    zIndex: 100,
+    minWidth: "180px",
+    overflow: "hidden",
+    border: "1px solid #e5e7eb",
+  },
+  contextMenuItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    width: "100%",
+    padding: "12px 16px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontSize: "14px",
+    color: "#0f1419",
+    textAlign: "left",
+    transition: "background 0.15s",
+  },
+  // Edit inline styles
+  editInputWrapper: {
+    backgroundColor: "#fff",
+    border: "2px solid #1877F2",
+    borderRadius: "12px",
+    padding: "10px 12px",
+    minWidth: "220px",
+    boxShadow: "0 2px 12px rgba(24,119,242,0.15)",
+  },
+  editInput: {
+    width: "100%",
+    border: "none",
+    outline: "none",
+    fontSize: "15px",
+    color: "#0f1419",
+    background: "transparent",
+    boxSizing: "border-box",
+  },
+  editCancelBtn: {
+    padding: "5px 14px",
+    borderRadius: "8px",
+    border: "1px solid #e5e7eb",
+    background: "#f0f2f5",
+    color: "#536471",
+    cursor: "pointer",
+    fontSize: "13px",
+    fontWeight: 600,
+  },
+  editSaveBtn: {
+    padding: "5px 14px",
+    borderRadius: "8px",
+    border: "none",
+    background: "#1877F2",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: "13px",
+    fontWeight: 600,
+  },
+  msgMeta: {
+    fontSize: "11px",
+    color: "#6c759e",
+    marginTop: "4px",
+    display: "flex",
+    gap: "4px",
+    alignItems: "center",
+  },
+
+  inputArea: {
+    padding: "16px 24px",
+    borderTop: "1px solid #eff3f4",
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    backgroundColor: "#fff",
+  },
+  inputIconBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#1877F2",
+    cursor: "pointer",
+    display: "flex",
+  },
+  inputWrapper: {
+    flex: 1,
+    backgroundColor: "#f0f2f5",
+    borderRadius: "999px",
+    display: "flex",
+    alignItems: "center",
+    padding: "8px 16px",
+  },
+  chatInput: {
+    flex: 1,
+    border: "none",
+    background: "transparent",
+    outline: "none",
+    fontSize: "15px",
+    color: "#0f1419",
+    padding: "4px 0",
+  },
+  emojiBtn: {
+    background: "transparent",
+    border: "none",
+    color: "#1877F2",
+    cursor: "pointer",
+    display: "flex",
+  },
+  sendBtn: {
+    background: "#e4e6eb",
+    color: "#bcc0c4",
+    border: "none",
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    pointerEvents: "none",
+  },
+  sendBtnActive: {
+    background: "#1877F2",
+    color: "#fff",
+    border: "none",
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    transition: "transform 0.1s",
+  },
+  // Modal Styles
+  modalOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 1000,
+  },
+  modalContent: {
+    backgroundColor: "#fff",
+    width: "100%",
+    maxWidth: "500px",
+    borderRadius: "16px",
+    display: "flex",
+    flexDirection: "column",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    overflow: "hidden",
+  },
+  modalHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "16px 20px",
+    borderBottom: "1px solid #eff3f4",
+  },
+  closeModalBtn: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "#536471",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalBody: { flex: 1, padding: 0 },
+  friendItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "12px",
+    padding: "12px 20px",
+    cursor: "pointer",
+    borderBottom: "1px solid #f9fafb",
+    transition: "background 0.2s",
+  },
+  friendAvatar: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "50%",
+    objectFit: "cover",
+  },
+};

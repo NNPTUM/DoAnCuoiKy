@@ -18,13 +18,18 @@ const messageSchema = new mongoose.Schema(
       enum: ["text", "image", "file", "system"], // 'system': "A đã thêm B vào nhóm"
       default: "text",
     },
-    content: {
+    text: {
       type: String, // Chứa text hoặc URL của file/ảnh
       required: true,
       trim: true,
     },
     // Trạng thái thu hồi tin nhắn
     isRecalled: {
+      type: Boolean,
+      default: false,
+    },
+    // Đánh dấu tin nhắn đã được sửa
+    isEdited: {
       type: Boolean,
       default: false,
     },

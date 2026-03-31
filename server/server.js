@@ -1,16 +1,22 @@
 // server/server.js
 require("dotenv").config();
+const http = require("http");
 const express = require("express");
 const cors = require("cors");
 const connectDB = require("./src/config/db.config");
 const authRoutes = require("./src/routes/auth.route");
 const postRoutes = require("./src/routes/post.route");
 const uploadRoutes = require("./src/routes/upload.route");
-const connectionRoutes = require('./src/routes/connection.route');
+const connectionRoutes = require("./src/routes/connection.route");
+const conversationRoutes = require("./src/routes/conversation.route");
+const messageRoutes = require("./src/routes/message.route");
+const { initSocket } = require("./src/socket/socket");
 require("./src/models");
 
 // Khởi tạo app Express
 const app = express();
+// Tạo server HTTP từ Express app
+const server = http.createServer(app);
 
 // Middleware
 app.use(cors()); // Cho phép Frontend (Vite) gọi API không bị lỗi CORS
@@ -18,7 +24,9 @@ app.use(express.json()); // Giúp Backend đọc được dữ liệu JSON từ 
 app.use("/api/auth", authRoutes); // Đăng ký route cho auth (đăng ký, đăng nhập)
 app.use("/api/posts", postRoutes);
 app.use("/api/upload", uploadRoutes);
-app.use('/api/connections', connectionRoutes);
+app.use("/api/connections", connectionRoutes);
+app.use("/api/conversations", conversationRoutes);
+app.use("/api/messages", messageRoutes);
 
 // Tạo một API test thử
 app.get("/", (req, res) => {
@@ -27,11 +35,13 @@ app.get("/", (req, res) => {
   });
 });
 
+initSocket(server);
+
 // Kết nối database trước khi khởi động server
 connectDB();
 
 // Khai báo Port và chạy Server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(`Server đang chạy thành công tại http://localhost:${PORT}`);
 });
