@@ -16,27 +16,32 @@ exports.getMessages = async (req, res) => {
   }
 };
 
-// 2. GỬI TIN NHẮN MỚI
+// 2. GỬi TIN NHắN MỚI
 exports.sendMessage = async (req, res) => {
   try {
-    const { conversationId, text } = req.body;
+    const { conversationId, text, imageUrl, messageType } = req.body;
     const senderId = req.user.id;
 
-    if (!text)
+    if (!text && !imageUrl)
       return res
         .status(400)
         .json({ success: false, message: "Tin nhắn không được để trống" });
+
+    const type = messageType || (imageUrl ? "image" : "text");
+    const lastMessagePreview = type === "image" ? "📷 Hình ảnh" : text;
 
     // Bước 1: Tạo bản ghi tin nhắn mới
     const newMessage = await Message.create({
       conversationId,
       senderId,
-      text,
+      text: text || "",
+      imageUrl: imageUrl || null,
+      messageType: type,
     });
 
-    // Bước 2: Cập nhật "Tin nhắn cuối cùng" và "Thời gian" cho đoạn chat để nó nhảy lên đầu danh sách
+    // Bước 2: Cập nhật "Tin nhắn cuối cùng" và "Thời gian" cho đoạn chat
     await Conversation.findByIdAndUpdate(conversationId, {
-      lastMessage: text,
+      lastMessage: lastMessagePreview,
       updatedAt: new Date(),
     });
 
@@ -47,6 +52,27 @@ exports.sendMessage = async (req, res) => {
     );
 
     res.status(201).json({ success: true, data: populatedMessage });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 2b. UPLOAD ẢNH TIN NHắN LÊN CLOUDINARY
+exports.uploadMessageImage = async (req, res) => {
+  try {
+    if (!req.file)
+      return res.status(400).json({ success: false, message: "Không có file nào được upload" });
+
+    const cloudinary = require("../config/cloudinary.config");
+    const result = await new Promise((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        { folder: "social_app_messages", transformation: [{ width: 1200, height: 900, crop: "limit" }] },
+        (error, result) => { if (error) reject(error); else resolve(result); }
+      );
+      stream.end(req.file.buffer);
+    });
+
+    res.status(200).json({ success: true, imageUrl: result.secure_url });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

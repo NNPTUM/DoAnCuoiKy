@@ -20,8 +20,12 @@ const messageSchema = new mongoose.Schema(
     },
     text: {
       type: String, // Chứa text hoặc URL của file/ảnh
-      required: true,
+      required: false,
       trim: true,
+    },
+    imageUrl: {
+      type: String, // URL ảnh lưu trên Cloudinary (cho messageType: 'image')
+      required: false,
     },
     // Trạng thái thu hồi tin nhắn
     isRecalled: {
