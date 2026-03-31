@@ -171,3 +171,26 @@ exports.getUserById = async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// Tìm kiếm người dùng
+exports.searchUsers = async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+    const currentUserId = req.user?.id;
+
+    // Build the query to find users matching the username and exclude the current user
+    const query = { username: { $regex: q, $options: "i" } };
+    if (currentUserId) query._id = { $ne: currentUserId };
+
+    const users = await User.find(query)
+      .select("_id username avatarUrl")
+      .limit(10);
+
+    return res.status(200).json({ success: true, data: users });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};

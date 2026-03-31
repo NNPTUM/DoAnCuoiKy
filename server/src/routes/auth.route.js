@@ -9,4 +9,6 @@ router.get("/me", verifyToken, authController.getMe);
 router.put("/me", verifyToken, authController.updateProfile);
 router.get("/users/:userId", verifyToken, authController.getUserById);
 
+router.get("/search", verifyToken, authController.searchUsers);
+
 module.exports = router;

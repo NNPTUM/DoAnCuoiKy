@@ -1,12 +1,29 @@
 // server/src/socket/socket.js
 const { Server } = require("socket.io");
+const UserSetting = require("../models/user_setting.model"); // Cần check setting quyền riêng tư
 
 let onlineUsers = [];
+let ioInstance = null; // Biến toàn cục giữ instance socket
 
-// Hàm thêm user vào danh sách online
-const addUser = (userId, socketId) => {
-  !onlineUsers.some((user) => user.userId === userId) &&
-    onlineUsers.push({ userId, socketId });
+// Hàm thêm user vào danh sách online (nếu user cho phép hiển thị)
+const addUser = async (userId, socketId) => {
+  // Check setting xem có cho hiển thị online không
+  try {
+    const setting = await UserSetting.findOne({ userId });
+    // Nếu setting có privacy.showOnlineStatus === false, không đưa vào danh sách online
+    if (setting && setting.privacy && setting.privacy.showOnlineStatus === false) {
+      // Vẫn lưu để backend có thể push notification riêng tư cho người này
+      // nhưng có thêm cờ để không trả về trong getOnlineUsers công khai
+      !onlineUsers.some((user) => user.userId === userId) &&
+        onlineUsers.push({ userId, socketId, isHidden: true });
+    } else {
+      !onlineUsers.some((user) => user.userId === userId) &&
+        onlineUsers.push({ userId, socketId, isHidden: false });
+    }
+  } catch(error) {
+    !onlineUsers.some((user) => user.userId === userId) &&
+      onlineUsers.push({ userId, socketId, isHidden: false });
+  }
 };
 
 // Hàm xóa user khi ngắt kết nối
@@ -14,32 +31,49 @@ const removeUser = (socketId) => {
   onlineUsers = onlineUsers.filter((user) => user.socketId !== socketId);
 };
 
-// Hàm lấy thông tin socket của một user cụ thể
+// Hàm lấy thông tin socket của một user cụ thể để gửi thông báo
 const getUser = (userId) => {
-  return onlineUsers.find((user) => user.userId === userId);
+  if (!userId) return undefined;
+  return onlineUsers.find((user) => user.userId.toString() === userId.toString());
+};
+
+// Hàm trả về io instance cho các controller khác gọi
+const getIo = () => {
+  return ioInstance;
 };
 
 const initSocket = (server) => {
-  const io = new Server(server, {
+  ioInstance = new Server(server, {
     cors: {
       origin: "http://localhost:5173", // URL của Frontend React
     },
   });
 
-  io.on("connection", (socket) => {
+  ioInstance.on("connection", (socket) => {
     console.log("⚡ Một người dùng kết nối:", socket.id);
 
     // 1. Lắng nghe user đăng nhập và lưu lại
-    socket.on("addUser", (userId) => {
-      addUser(userId, socket.id);
-      io.emit("getOnlineUsers", onlineUsers); // Gửi danh sách online cho mọi người
+    socket.on("addUser", async (userId) => {
+      await addUser(userId, socket.id);
+      
+      // Chỉ gửi những user đang public trạng thái online
+      const publicUsers = onlineUsers.filter(u => !u.isHidden);
+      ioInstance.emit("getOnlineUsers", publicUsers);
     });
 
     // 2. Lắng nghe sự kiện Gửi tin nhắn
-    socket.on("sendMessage", ({ senderId, receiverId, text, messageData }) => {
+    socket.on("sendMessage", async ({ senderId, receiverId, text, messageData }) => {
       const receiver = getUser(receiverId);
       if (receiver) {
-        io.to(receiver.socketId).emit("getMessage", messageData);
+        // Kiểm tra xem receiver có bật thông báo tin nhắn không
+        const setting = await UserSetting.findOne({ userId: receiverId });
+        if (!setting || setting.notifications.message !== false) {
+          ioInstance.to(receiver.socketId).emit("newNotification", {
+            type: "message",
+            message: `Bạn có tin nhắn mới`
+          });
+        }
+        ioInstance.to(receiver.socketId).emit("getMessage", messageData);
       }
     });
 
@@ -47,7 +81,7 @@ const initSocket = (server) => {
     socket.on("recallMessage", ({ messageId, conversationId, receiverId }) => {
       const receiver = getUser(receiverId);
       if (receiver) {
-        io.to(receiver.socketId).emit("messageRecalled", { messageId, conversationId });
+        ioInstance.to(receiver.socketId).emit("messageRecalled", { messageId, conversationId });
       }
     });
 
@@ -55,17 +89,32 @@ const initSocket = (server) => {
     socket.on("editMessage", ({ messageId, newText, receiverId }) => {
       const receiver = getUser(receiverId);
       if (receiver) {
-        io.to(receiver.socketId).emit("messageEdited", { messageId, newText });
+        ioInstance.to(receiver.socketId).emit("messageEdited", { messageId, newText });
       }
+    });
+
+    // Lắng nghe sự kiện cập nhật setting (để broadcast cập nhật UI ngay)
+    socket.on("settingUpdated", async (userId) => {
+      // Khi user cập nhật setting (ví dụ tắt Hiển thị trạng thái hoạt động), ta cần update lại onlineUsers list.
+      const userIdx = onlineUsers.findIndex(u => u.userId === userId);
+      if (userIdx !== -1) {
+        const setting = await UserSetting.findOne({ userId });
+        if (setting && setting.privacy) {
+          onlineUsers[userIdx].isHidden = !setting.privacy.showOnlineStatus;
+        }
+      }
+      const publicUsers = onlineUsers.filter(u => !u.isHidden);
+      ioInstance.emit("getOnlineUsers", publicUsers);
     });
 
     // 4. Xử lý ngắt kết nối
     socket.on("disconnect", () => {
-      console.log("Một người dùng ngắt kết nối!");
+      console.log("Một người dùng ngắt kết nối:", socket.id);
       removeUser(socket.id);
-      io.emit("getOnlineUsers", onlineUsers);
+      const publicUsers = onlineUsers.filter(u => !u.isHidden);
+      ioInstance.emit("getOnlineUsers", publicUsers);
     });
   });
 };
 
-module.exports = { initSocket };
+module.exports = { initSocket, getIo, getUser };

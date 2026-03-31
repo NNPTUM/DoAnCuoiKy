@@ -45,8 +45,7 @@ exports.createOrGetConversation = async (req, res) => {
       // Mặc định là 'everyone', nếu họ set 'friends' thì kiểm tra
       if (receiverSetting && receiverSetting.privacy?.whoCanMessageMe === "friends") {
         const isFriend = await Friendship.findOne({
-          user1: { $in: [senderId, receiverId] },
-          user2: { $in: [senderId, receiverId] },
+          users: { $all: [senderId, receiverId] },
         });
 
         if (!isFriend) {
