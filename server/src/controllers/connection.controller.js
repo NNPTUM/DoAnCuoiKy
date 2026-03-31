@@ -1,7 +1,7 @@
-const mongoose = require('mongoose');
-const FriendRequest = require('../models/friend_request.model');
-const Friendship = require('../models/friendship.model');
-const Block = require('../models/block.model');
+const mongoose = require("mongoose");
+const FriendRequest = require("../models/friend_request.model");
+const Friendship = require("../models/friendship.model");
+const Block = require("../models/block.model");
 
 // 1. GỬI LỜI MỜI KẾT BẠN
 exports.sendFriendRequest = async (req, res) => {
@@ -10,58 +10,90 @@ exports.sendFriendRequest = async (req, res) => {
     const { receiverId } = req.body;
 
     if (senderId === receiverId) {
-      return res.status(400).json({ success: false, message: "Không thể tự kết bạn với chính mình" });
+      return res.status(400).json({
+        success: false,
+        message: "Không thể tự kết bạn với chính mình",
+      });
     }
 
     // Kiểm tra xem có ai đang chặn ai không
     const isBlocked = await Block.findOne({
       $or: [
         { blockerId: senderId, blockedId: receiverId },
-        { blockerId: receiverId, blockedId: senderId }
-      ]
+        { blockerId: receiverId, blockedId: senderId },
+      ],
     });
-    if (isBlocked) return res.status(403).json({ success: false, message: "Không thể gửi lời mời do thao tác chặn" });
+    if (isBlocked)
+      return res.status(403).json({
+        success: false,
+        message: "Không thể gửi lời mời do thao tác chặn",
+      });
 
     // Kiểm tra xem đã là bạn bè chưa
     const isFriend = await Friendship.findOne({
-      users: { $all: [senderId, receiverId] }
+      users: { $all: [senderId, receiverId] },
     });
-    if (isFriend) return res.status(400).json({ success: false, message: "Hai người đã là bạn bè" });
+    if (isFriend)
+      return res
+        .status(400)
+        .json({ success: false, message: "Hai người đã là bạn bè" });
 
     // Dùng upsert: nếu đã có (dù đã declined/accepted) thì reset về pending, chưa có thì tạo mới
-    const existingRequest = await FriendRequest.findOne({ senderId, receiverId });
+    const existingRequest = await FriendRequest.findOne({
+      senderId,
+      receiverId,
+    });
 
     if (existingRequest) {
-      if (existingRequest.status === 'pending') {
-        return res.status(400).json({ success: false, message: "Đã gửi lời mời trước đó, đang chờ phê duyệt" });
+      if (existingRequest.status === "pending") {
+        return res.status(400).json({
+          success: false,
+          message: "Đã gửi lời mời trước đó, đang chờ phê duyệt",
+        });
       }
-      if (existingRequest.status === 'accepted') {
+      if (existingRequest.status === "accepted") {
         // Kiểm tra thực tế trong Friendship — có thể họ đã hủy kết bạn
         const stillFriends = await Friendship.findOne({
-          users: { $all: [senderId, receiverId] }
+          users: { $all: [senderId, receiverId] },
         });
         if (stillFriends) {
-          return res.status(400).json({ success: false, message: "Hai người đã là bạn bè" });
+          return res
+            .status(400)
+            .json({ success: false, message: "Hai người đã là bạn bè" });
         }
         // Đã hủy kết bạn → reset FriendRequest và cho phép gửi lại
-        existingRequest.status = 'pending';
+        existingRequest.status = "pending";
         await existingRequest.save();
-        return res.status(200).json({ success: true, message: "Đã gửi lời mời kết bạn", data: existingRequest });
+        return res.status(200).json({
+          success: true,
+          message: "Đã gửi lời mời kết bạn",
+          data: existingRequest,
+        });
       }
       // Status là 'declined' → cho phép gửi lại bằng cách reset
-      existingRequest.status = 'pending';
+      existingRequest.status = "pending";
       await existingRequest.save();
-      return res.status(200).json({ success: true, message: "Đã gửi lại lời mời kết bạn", data: existingRequest });
+      return res.status(200).json({
+        success: true,
+        message: "Đã gửi lại lời mời kết bạn",
+        data: existingRequest,
+      });
     }
 
     // Chưa tồn tại → tạo mới
     const newRequest = await FriendRequest.create({ senderId, receiverId });
-    res.status(201).json({ success: true, message: "Đã gửi lời mời kết bạn", data: newRequest });
-
+    res.status(201).json({
+      success: true,
+      message: "Đã gửi lời mời kết bạn",
+      data: newRequest,
+    });
   } catch (error) {
     // Vẫn xử lý duplicate key phòng race condition
     if (error.code === 11000) {
-      return res.status(400).json({ success: false, message: "Lời mời đã tồn tại, vui lòng thử lại" });
+      return res.status(400).json({
+        success: false,
+        message: "Lời mời đã tồn tại, vui lòng thử lại",
+      });
     }
     res.status(500).json({ success: false, message: error.message });
   }
@@ -77,17 +109,26 @@ exports.acceptFriendRequest = async (req, res) => {
     const receiverId = req.user.id;
 
     // Tìm lời mời
-    const request = await FriendRequest.findOne({ _id: requestId, receiverId, status: 'pending' });
+    const request = await FriendRequest.findOne({
+      _id: requestId,
+      receiverId,
+      status: "pending",
+    });
     if (!request) throw new Error("Không tìm thấy lời mời hợp lệ");
 
     // Thao tác 1: Cập nhật trạng thái lời mời thành 'accepted'
-    request.status = 'accepted';
+    request.status = "accepted";
     await request.save({ session });
 
     // Thao tác 2: Tạo bản ghi bạn bè
-    await Friendship.create([{
-      users: [request.senderId, receiverId]
-    }], { session });
+    await Friendship.create(
+      [
+        {
+          users: [request.senderId, receiverId],
+        },
+      ],
+      { session },
+    );
 
     await session.commitTransaction();
     session.endSession();
@@ -107,11 +148,13 @@ exports.unfriend = async (req, res) => {
     const { friendId } = req.params;
 
     const deletedFriendship = await Friendship.findOneAndDelete({
-      users: { $all: [userId, friendId] }
+      users: { $all: [userId, friendId] },
     });
 
     if (!deletedFriendship) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy quan hệ bạn bè" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy quan hệ bạn bè" });
     }
 
     res.status(200).json({ success: true, message: "Đã hủy kết bạn" });
@@ -133,17 +176,23 @@ exports.blockUser = async (req, res) => {
     await Block.create([{ blockerId, blockedId }], { session });
 
     // Thao tác 2: Xóa quan hệ bạn bè (nếu có)
-    await Friendship.findOneAndDelete({
-      users: { $all: [blockerId, blockedId] }
-    }, { session });
+    await Friendship.findOneAndDelete(
+      {
+        users: { $all: [blockerId, blockedId] },
+      },
+      { session },
+    );
 
     // Thao tác 3: Xóa các lời mời kết bạn đang chờ (nếu có)
-    await FriendRequest.deleteMany({
-      $or: [
-        { senderId: blockerId, receiverId: blockedId, status: 'pending' },
-        { senderId: blockedId, receiverId: blockerId, status: 'pending' }
-      ]
-    }, { session });
+    await FriendRequest.deleteMany(
+      {
+        $or: [
+          { senderId: blockerId, receiverId: blockedId, status: "pending" },
+          { senderId: blockedId, receiverId: blockerId, status: "pending" },
+        ],
+      },
+      { session },
+    );
 
     await session.commitTransaction();
     session.endSession();
@@ -160,9 +209,11 @@ exports.blockUser = async (req, res) => {
 exports.getPendingRequests = async (req, res) => {
   try {
     const userId = req.user.id;
-    const requests = await FriendRequest.find({ receiverId: userId, status: 'pending' })
-      .populate('senderId', 'username avatarUrl'); // Lấy thông tin người gửi
-    
+    const requests = await FriendRequest.find({
+      receiverId: userId,
+      status: "pending",
+    }).populate("senderId", "username avatarUrl"); // Lấy thông tin người gửi
+
     res.status(200).json({ success: true, data: requests });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -173,8 +224,10 @@ exports.getPendingRequests = async (req, res) => {
 exports.getSentRequests = async (req, res) => {
   try {
     const userId = req.user.id;
-    const requests = await FriendRequest.find({ senderId: userId, status: 'pending' })
-      .populate('receiverId', 'username avatarUrl');
+    const requests = await FriendRequest.find({
+      senderId: userId,
+      status: "pending",
+    }).populate("receiverId", "username avatarUrl");
     res.status(200).json({ success: true, data: requests });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -188,22 +241,35 @@ exports.getFriendStatus = async (req, res) => {
     const { targetId } = req.params;
 
     if (userId === targetId) {
-      return res.status(200).json({ success: true, status: 'me' });
+      return res.status(200).json({ success: true, status: "me" });
     }
 
     // Kiểm tra bạn bè
-    const isFriend = await Friendship.findOne({ users: { $all: [userId, targetId] } });
-    if (isFriend) return res.status(200).json({ success: true, status: 'friends' });
+    const isFriend = await Friendship.findOne({
+      users: { $all: [userId, targetId] },
+    });
+    if (isFriend)
+      return res.status(200).json({ success: true, status: "friends" });
 
     // Kiểm tra lời mời mình đã gửi đi
-    const sentRequest = await FriendRequest.findOne({ senderId: userId, receiverId: targetId, status: 'pending' });
-    if (sentRequest) return res.status(200).json({ success: true, status: 'sent' });
+    const sentRequest = await FriendRequest.findOne({
+      senderId: userId,
+      receiverId: targetId,
+      status: "pending",
+    });
+    if (sentRequest)
+      return res.status(200).json({ success: true, status: "sent" });
 
     // Kiểm tra lời mời người kia gửi đến mình
-    const receivedRequest = await FriendRequest.findOne({ senderId: targetId, receiverId: userId, status: 'pending' });
-    if (receivedRequest) return res.status(200).json({ success: true, status: 'pending' });
+    const receivedRequest = await FriendRequest.findOne({
+      senderId: targetId,
+      receiverId: userId,
+      status: "pending",
+    });
+    if (receivedRequest)
+      return res.status(200).json({ success: true, status: "pending" });
 
-    return res.status(200).json({ success: true, status: 'none' });
+    return res.status(200).json({ success: true, status: "none" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -216,13 +282,18 @@ exports.declineFriendRequest = async (req, res) => {
     const receiverId = req.user.id;
 
     const request = await FriendRequest.findOneAndUpdate(
-      { _id: requestId, receiverId, status: 'pending' },
-      { status: 'declined' }
+      { _id: requestId, receiverId, status: "pending" },
+      { status: "declined" },
     );
 
-    if (!request) return res.status(404).json({ success: false, message: "Không tìm thấy lời mời hợp lệ" });
+    if (!request)
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy lời mời hợp lệ" });
 
-    res.status(200).json({ success: true, message: "Đã từ chối lời mời kết bạn" });
+    res
+      .status(200)
+      .json({ success: true, message: "Đã từ chối lời mời kết bạn" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -232,12 +303,27 @@ exports.declineFriendRequest = async (req, res) => {
 exports.getFriends = async (req, res) => {
   try {
     const userId = req.user.id;
-    const friendships = await Friendship.find({ users: userId }).populate('users', 'username avatarUrl');
-    
-    // Rút trích ra danh sách thông tin người kia
-    const friends = friendships.map(f => {
-      return f.users.find(u => u._id.toString() !== userId);
-    }).filter(Boolean); // Lọc bỏ trường hợp bị rỗng
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+
+    const friendships = await Friendship.find({ users: userObjectId }).populate(
+      "users",
+      "username avatarUrl",
+    );
+
+    // Rút trích ra danh sách thông tin người còn lại trong từng cặp bạn bè.
+    const friendMap = new Map();
+    friendships.forEach((f) => {
+      const users = Array.isArray(f.users) ? f.users : [];
+      const otherUser = users.find(
+        (u) => u && u._id && u._id.toString() !== userObjectId.toString(),
+      );
+
+      if (otherUser && !friendMap.has(otherUser._id.toString())) {
+        friendMap.set(otherUser._id.toString(), otherUser);
+      }
+    });
+
+    const friends = Array.from(friendMap.values());
 
     res.status(200).json({ success: true, data: friends });
   } catch (error) {
@@ -249,28 +335,40 @@ exports.getFriends = async (req, res) => {
 exports.getSuggestions = async (req, res) => {
   try {
     const userId = req.user.id;
-    const User = require('../models/user.model'); 
+    const User = require("../models/user.model");
 
     // Lấy danh sách bạn bè
     const friendships = await Friendship.find({ users: userId });
-    const friendIds = friendships.flatMap(f => f.users.map(u => u.toString()));
+    const friendIds = friendships.flatMap((f) =>
+      f.users.map((u) => u.toString()),
+    );
 
     // Lấy những người đã gửi/nhận lời mời chưa xử lý hoặc đã từ chối
     const requests = await FriendRequest.find({
-      $or: [{ senderId: userId }, { receiverId: userId }]
+      $or: [{ senderId: userId }, { receiverId: userId }],
     });
-    const requestedIds = requests.map(r => r.senderId.toString() === userId ? r.receiverId.toString() : r.senderId.toString());
+    const requestedIds = requests.map((r) =>
+      r.senderId.toString() === userId
+        ? r.receiverId.toString()
+        : r.senderId.toString(),
+    );
 
     // Lấy những người bị chặn/chặn mình
     const blocks = await Block.find({
-      $or: [{ blockerId: userId }, { blockedId: userId }]
+      $or: [{ blockerId: userId }, { blockedId: userId }],
     });
-    const blockedIds = blocks.map(b => b.blockerId.toString() === userId ? b.blockedId.toString() : b.blockerId.toString());
+    const blockedIds = blocks.map((b) =>
+      b.blockerId.toString() === userId
+        ? b.blockedId.toString()
+        : b.blockerId.toString(),
+    );
 
-    const excludeIds = [...new Set([...friendIds, ...requestedIds, ...blockedIds, userId])];
+    const excludeIds = [
+      ...new Set([...friendIds, ...requestedIds, ...blockedIds, userId]),
+    ];
 
     const suggestions = await User.find({ _id: { $nin: excludeIds } })
-      .select('username avatarUrl')
+      .select("username avatarUrl")
       .limit(10);
 
     res.status(200).json({ success: true, data: suggestions });
@@ -283,8 +381,11 @@ exports.getSuggestions = async (req, res) => {
 exports.getBlockedUsers = async (req, res) => {
   try {
     const userId = req.user.id;
-    const blocks = await Block.find({ blockerId: userId }).populate('blockedId', 'username avatarUrl');
-    const blockedUsers = blocks.map(b => b.blockedId);
+    const blocks = await Block.find({ blockerId: userId }).populate(
+      "blockedId",
+      "username avatarUrl",
+    );
+    const blockedUsers = blocks.map((b) => b.blockedId);
     res.status(200).json({ success: true, data: blockedUsers });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -299,7 +400,11 @@ exports.unblockUser = async (req, res) => {
 
     const block = await Block.findOneAndDelete({ blockerId, blockedId });
 
-    if (!block) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng này trong danh sách chặn" });
+    if (!block)
+      return res.status(404).json({
+        success: false,
+        message: "Không tìm thấy người dùng này trong danh sách chặn",
+      });
 
     res.status(200).json({ success: true, message: "Đã gỡ chặn" });
   } catch (error) {

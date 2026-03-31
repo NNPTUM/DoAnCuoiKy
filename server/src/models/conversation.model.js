@@ -3,6 +3,13 @@ const mongoose = require("mongoose");
 
 const conversationSchema = new mongoose.Schema(
   {
+    members: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+        required: true,
+      },
+    ],
     isGroupChat: {
       type: Boolean,
       default: false,
@@ -13,6 +20,10 @@ const conversationSchema = new mongoose.Schema(
     },
     avatarUrl: {
       type: String, // Ảnh đại diện của group
+    },
+    // Lưu tạm văn bản gần nhất để hiển thị ra ngoài list
+    lastMessage: {
+      type: String,
     },
     // Dùng để hiển thị dòng text tin nhắn mới nhất ngoài danh sách chat
     latestMessageId: {
