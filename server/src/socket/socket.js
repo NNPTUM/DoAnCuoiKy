@@ -10,19 +10,27 @@ const addUser = async (userId, socketId) => {
   // Check setting xem có cho hiển thị online không
   try {
     const setting = await UserSetting.findOne({ userId });
+    let isHidden = false;
     // Nếu setting có privacy.showOnlineStatus === false, không đưa vào danh sách online
     if (setting && setting.privacy && setting.privacy.showOnlineStatus === false) {
-      // Vẫn lưu để backend có thể push notification riêng tư cho người này
-      // nhưng có thêm cờ để không trả về trong getOnlineUsers công khai
-      !onlineUsers.some((user) => user.userId === userId) &&
-        onlineUsers.push({ userId, socketId, isHidden: true });
+      isHidden = true;
+    }
+    
+    const existingUser = onlineUsers.find((user) => user.userId === userId);
+    if (existingUser) {
+      existingUser.socketId = socketId;
+      existingUser.isHidden = isHidden;
     } else {
-      !onlineUsers.some((user) => user.userId === userId) &&
-        onlineUsers.push({ userId, socketId, isHidden: false });
+      onlineUsers.push({ userId, socketId, isHidden });
     }
   } catch(error) {
-    !onlineUsers.some((user) => user.userId === userId) &&
+    const existingUser = onlineUsers.find((user) => user.userId === userId);
+    if (existingUser) {
+      existingUser.socketId = socketId;
+      existingUser.isHidden = false;
+    } else {
       onlineUsers.push({ userId, socketId, isHidden: false });
+    }
   }
 };
 
