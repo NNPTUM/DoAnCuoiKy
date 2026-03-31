@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: `http://${window.location.hostname}:5000/api`,
 });
 
 // Cấu hình Interceptor: Tự động đính kèm token vào Header trước khi gửi request

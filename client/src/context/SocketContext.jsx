@@ -33,7 +33,7 @@ export const SocketProvider = ({ children }) => {
     fetchPendingCount();
 
     const currentUserId = currentUser.id || currentUser._id;
-    const newSocket = io("http://localhost:5000");
+    const newSocket = io(`http://${window.location.hostname}:5000`);
     setSocket(newSocket);
 
     newSocket.on("connect", () => {
