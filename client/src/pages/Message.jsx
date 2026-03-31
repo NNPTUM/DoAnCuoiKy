@@ -24,6 +24,14 @@ export default function Message() {
   const [editingMsgId, setEditingMsgId] = useState(null); // ID tin đang sửa
   const [editText, setEditText] = useState(""); // Nội dung đang sửa
 
+  // --- IMAGE STATES ---
+  const [selectedImage, setSelectedImage] = useState(null);   // File object
+  const [imagePreview, setImagePreview] = useState(null);     // Base64 preview URL
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const imageInputRef = useRef(null);
+  // Ref lưu Promise upload đang chạy ngầm (optimistic upload)
+  const pendingUploadRef = useRef(null); // Promise<string> - resolve ra imageUrl
+
   const openNewChatModal = async () => {
     setShowNewChatModal(true);
     try {
@@ -177,61 +185,192 @@ export default function Message() {
   };
 
   const handleSendMessage = async () => {
-    if (!inputText.trim() || !activeConversation) return;
-    if (isSending.current) return; // Chống double-send
+    if (!inputText.trim() && !selectedImage) return;
+    if (!activeConversation) return;
+    if (isSending.current) return;
     isSending.current = true;
 
     const textToSend = inputText;
-    setInputText(""); // Xóa input ngay để UX mượt
+    const capturedPreview = imagePreview;   // lưu lại base64
+    const capturedFile = selectedImage;
+    setInputText("");
 
     try {
-      const res = await API.post("/messages", {
-        conversationId: activeConversation._id,
-        text: textToSend,
-      });
+      let newMessage;
 
-      if (res.data.success) {
-        const newMessage = res.data.data;
+      if (capturedFile) {
+        // OPTIMISTIC UI: Hiển thị bubble ảnh tạm (base64) ngay lập tức
+        const optimisticId = `optimistic-${Date.now()}`;
+        const optimisticMsg = {
+          _id: optimisticId,
+          conversationId: activeConversation._id,
+          senderId: { _id: currentUserId },
+          messageType: "image",
+          imageUrl: capturedPreview, // base64 hiển thị tạm
+          text: textToSend || "",
+          createdAt: new Date().toISOString(),
+          _isOptimistic: true, // đánh dấu tin tạm
+        };
+        setMessages((prev) => [...prev, optimisticMsg]);
+        setSelectedImage(null);
+        setImagePreview(null);
+        isSending.current = false; // giải phóng lock sớm để user có thể gửi tiếp
 
-        // 1. Cập nhật tin nhắn vào khung chat (chỉ 1 lần)
-        setMessages((prev) => [...prev, newMessage]);
+        // Chờ kết quả upload đang chạy ngầm (hoặc bắt đầu mới nếu chưa có)
+        setIsUploadingImage(true);
+        let imageUrl;
+        try {
+          imageUrl = pendingUploadRef.current
+            ? await pendingUploadRef.current
+            : await uploadImageToServer(capturedFile);
+        } finally {
+          pendingUploadRef.current = null;
+          setIsUploadingImage(false);
+        }
 
-        // 2. Đẩy cuộc trò chuyện lên đầu danh sách và cập nhật lastMessage
+        // Gửi message vào DB sau khi có URL thật
+        const res = await API.post("/messages", {
+          conversationId: activeConversation._id,
+          imageUrl,
+          text: textToSend || "",
+          messageType: "image",
+        });
+        if (!res.data.success) throw new Error("Gửi tin nhắn thất bại");
+        newMessage = res.data.data;
+
+        // Swap bubble tạm thành bubble thật (có _id thật + URL Cloudinary)
+        setMessages((prev) =>
+          prev.map((m) => (m._id === optimisticId ? newMessage : m))
+        );
+
+        // Cập nhật preview cuộc hội thoại
         setConversations((prev) => {
-          const updatedConvos = prev.map((conv) => {
-            if (conv._id === activeConversation._id) {
-              return {
-                ...conv,
-                lastMessage: newMessage.text,
-                updatedAt: new Date(),
-              };
-            }
-            return conv;
-          });
-          // Sắp xếp lại: cái nào mới cập nhật thì lên đầu
-          return updatedConvos.sort(
-            (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
+          const updated = prev.map((conv) =>
+            conv._id === activeConversation._id
+              ? { ...conv, lastMessage: "📷 Hình ảnh", updatedAt: new Date() }
+              : conv
           );
+          return updated.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
         });
 
-        // 3. Bắn tin nhắn qua Socket cho người nhận
+        // Socket
         const receiver = getOtherUser(activeConversation);
         if (receiver && socket) {
           socket.emit("sendMessage", {
             senderId: currentUserId,
             receiverId: receiver._id,
-            text: textToSend,
-            messageData: newMessage, // Gửi toàn bộ data tin nhắn vừa lưu DB
+            text: newMessage.text,
+            messageData: newMessage,
           });
         }
+        return; // kết thúc sớm
       }
+
+      // --- Gửi text thuần ---
+      const res = await API.post("/messages", {
+        conversationId: activeConversation._id,
+        text: textToSend,
+      });
+      if (!res.data.success) throw new Error("Gửi tin nhắn thất bại");
+      newMessage = res.data.data;
+
+      setMessages((prev) => [...prev, newMessage]);
+
+      const previewText = newMessage.text;
+      setConversations((prev) => {
+        const updatedConvos = prev.map((conv) =>
+          conv._id === activeConversation._id
+            ? { ...conv, lastMessage: previewText, updatedAt: new Date() }
+            : conv
+        );
+        return updatedConvos.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+      });
+
+      const receiver = getOtherUser(activeConversation);
+      if (receiver && socket) {
+        socket.emit("sendMessage", {
+          senderId: currentUserId,
+          receiverId: receiver._id,
+          text: newMessage.text,
+          messageData: newMessage,
+        });
+      }
+
     } catch (error) {
       console.error("Gửi tin nhắn thất bại", error);
-      setInputText(textToSend); // Khôi phục text nếu gửi thất bại
+      setInputText(textToSend);
+      setIsUploadingImage(false);
+      // Xóa bubble optimistic nếu lỗi
+      setMessages((prev) => prev.filter((m) => !m._isOptimistic));
       alert("Không thể gửi tin nhắn lúc này.");
     } finally {
-      isSending.current = false; // Release lock
+      isSending.current = false;
     }
+  };
+
+  // --- Nén ảnh bằng Canvas API (giảm kích thước trước khi upload) ---
+  const compressImage = (file, maxWidth = 1200, quality = 0.82) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        // Tính scale để giữ tỷ lệ
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (blob) => resolve(new File([blob], file.name, { type: "image/jpeg" })),
+          "image/jpeg",
+          quality
+        );
+      };
+      img.src = url;
+    });
+  };
+
+  // Upload ảnh ngầm (trả về Promise chứa imageUrl)
+  const uploadImageToServer = async (file) => {
+    const compressed = await compressImage(file);
+    const formData = new FormData();
+    formData.append("image", compressed);
+    const res = await API.post("/messages/upload-image", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+    if (!res.data.success) throw new Error("Upload ảnh thất bại");
+    return res.data.imageUrl;
+  };
+
+  // Xử lý chọn file ảnh + OPTIMIZE: bắt đầu upload ngay mà không đợi bấm gửi
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (file.size > 15 * 1024 * 1024) {
+      alert("File quá lớn! Vui lòng chọn ảnh dưới 15MB.");
+      return;
+    }
+    setSelectedImage(file);
+
+    // Hiển thị preview ngay
+    const reader = new FileReader();
+    reader.onload = (ev) => setImagePreview(ev.target.result);
+    reader.readAsDataURL(file);
+
+    // Bắt đầu upload ngầm ngay lập tức
+    pendingUploadRef.current = uploadImageToServer(file);
+
+    // Reset input
+    e.target.value = "";
+  };
+
+  // Hủy chọn ảnh
+  const handleCancelImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    pendingUploadRef.current = null;
   };
   // --- THU HỒI TIN NHẬN ---
   const handleRecallMessage = async (messageId) => {
@@ -598,6 +737,47 @@ export default function Message() {
                                 <span className="material-symbols-outlined" style={{ fontSize: "14px", verticalAlign: "middle", marginRight: "4px" }}>block</span>
                                 Tin nhắn đã bị thu hồi
                               </div>
+                            ) : msg.messageType === "image" && msg.imageUrl ? (
+                              /* Tin nhắn ảnh */
+                              <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                                <div style={{ position: "relative" }}>
+                                  <div style={isMe ? styles.imageBubbleOut : styles.imageBubbleIn}>
+                                    <img
+                                      src={msg.imageUrl}
+                                      alt="Ảnh"
+                                      style={{
+                                        ...styles.msgImage,
+                                        opacity: msg._isOptimistic ? 0.65 : 1,
+                                        filter: msg._isOptimistic ? "blur(0.5px)" : "none",
+                                        transition: "opacity 0.3s, filter 0.3s",
+                                      }}
+                                      onClick={() => !msg._isOptimistic && window.open(msg.imageUrl, "_blank")}
+                                    />
+                                  </div>
+                                  {/* Overlay loading khi đang upload */}
+                                  {msg._isOptimistic && (
+                                    <div style={{
+                                      position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+                                      display: "flex", alignItems: "center", justifyContent: "center",
+                                      borderRadius: "18px",
+                                    }}>
+                                      <div style={styles.uploadingOverlay}>
+                                        <span
+                                          className="material-symbols-outlined"
+                                          style={{ fontSize: "22px", color: "#fff", animation: "spin 1s linear infinite" }}
+                                        >
+                                          progress_activity
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                {msg.text && (
+                                  <div style={isMe ? styles.bubbleOut : styles.bubbleIn}>
+                                    {msg.text}
+                                  </div>
+                                )}
+                              </div>
                             ) : (
                               msg.text && (
                                 <div style={isMe ? styles.bubbleOut : styles.bubbleIn}>
@@ -621,24 +801,56 @@ export default function Message() {
                 </div>
 
                 {/* Input Box */}
+                {/* Preview ảnh đã chọn */}
+                {imagePreview && (
+                  <div style={styles.imagePreviewArea}>
+                    <div style={styles.imagePreviewWrap}>
+                      <img src={imagePreview} alt="preview" style={styles.imagePreviewImg} />
+                      <button style={styles.imagePreviewRemove} onClick={handleCancelImage} title="Xóa ảnh">
+                        <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>close</span>
+                      </button>
+                    </div>
+                    <span style={{ fontSize: "12px", color: "#6c759e", marginLeft: "8px" }}>
+                      {selectedImage?.name}
+                    </span>
+                  </div>
+                )}
                 <div style={styles.inputArea}>
+                  {/* Hidden file input */}
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/*"
+                    style={{ display: "none" }}
+                    onChange={handleImageSelect}
+                  />
                   <button style={styles.inputIconBtn}>
                     <span className="material-symbols-outlined">
                       add_circle
                     </span>
                   </button>
-                  <button style={styles.inputIconBtn}>
+                  <button
+                    style={{
+                      ...styles.inputIconBtn,
+                      color: selectedImage ? "#1877F2" : "#1877F2",
+                      background: selectedImage ? "#e7f3ff" : "transparent",
+                      borderRadius: "8px",
+                      padding: "6px",
+                    }}
+                    onClick={() => imageInputRef.current?.click()}
+                    title="Gửi ảnh"
+                  >
                     <span className="material-symbols-outlined">image</span>
                   </button>
                   <div style={styles.inputWrapper}>
                     <input
                       type="text"
-                      placeholder="Nhập tin nhắn..."
+                      placeholder={selectedImage ? "Thêm chú thích cho ảnh... (tùy chọn)" : "Nhập tin nhắn..."}
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") {
-                          e.preventDefault(); // Ngăn browser tự trigger click vào button
+                          e.preventDefault();
                           handleSendMessage();
                         }
                       }}
@@ -650,16 +862,14 @@ export default function Message() {
                   </div>
                   <button
                     onClick={handleSendMessage}
-                    style={
-                      inputText.trim() ? styles.sendBtnActive : styles.sendBtn
-                    }
+                    disabled={isUploadingImage}
+                    style={(inputText.trim() || selectedImage) && !isUploadingImage ? styles.sendBtnActive : styles.sendBtn}
                   >
-                    <span
-                      className="material-symbols-outlined"
-                      style={{ marginLeft: "2px" }}
-                    >
-                      send
-                    </span>
+                    {isUploadingImage ? (
+                      <span className="material-symbols-outlined" style={{ marginLeft: "2px", animation: "spin 1s linear infinite" }}>progress_activity</span>
+                    ) : (
+                      <span className="material-symbols-outlined" style={{ marginLeft: "2px" }}>send</span>
+                    )}
                   </button>
                 </div>
               </>
@@ -797,6 +1007,8 @@ export default function Message() {
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: #dce2f5; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #b0b9d1; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .msg-image:hover { opacity: 0.9; }
       `}</style>
     </div>
   );
@@ -1275,5 +1487,77 @@ const styles = {
     height: "44px",
     borderRadius: "50%",
     objectFit: "cover",
+  },
+  // Image message bubbles
+  imageBubbleOut: {
+    backgroundColor: "#1877F2",
+    borderRadius: "18px 18px 4px 18px",
+    padding: "4px",
+    overflow: "hidden",
+    maxWidth: "280px",
+  },
+  imageBubbleIn: {
+    backgroundColor: "#f0f2f5",
+    borderRadius: "18px 18px 18px 4px",
+    padding: "4px",
+    overflow: "hidden",
+    maxWidth: "280px",
+  },
+  msgImage: {
+    display: "block",
+    width: "100%",
+    maxWidth: "272px",
+    borderRadius: "14px",
+    cursor: "pointer",
+    objectFit: "cover",
+    transition: "opacity 0.2s",
+  },
+  // Image preview area (above input box)
+  imagePreviewArea: {
+    display: "flex",
+    alignItems: "center",
+    padding: "10px 24px 0",
+    backgroundColor: "#fff",
+    borderTop: "1px solid #eff3f4",
+  },
+  imagePreviewWrap: {
+    position: "relative",
+    display: "inline-block",
+  },
+  imagePreviewImg: {
+    width: "80px",
+    height: "80px",
+    objectFit: "cover",
+    borderRadius: "10px",
+    border: "2px solid #1877F2",
+    display: "block",
+  },
+  imagePreviewRemove: {
+    position: "absolute",
+    top: "-8px",
+    right: "-8px",
+    width: "22px",
+    height: "22px",
+    borderRadius: "50%",
+    background: "#e74c3c",
+    color: "#fff",
+    border: "none",
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 0,
+    boxShadow: "0 1px 4px rgba(0,0,0,0.2)",
+  },
+  // Overlay spinner khi ảnh đang upload (optimistic)
+  uploadingOverlay: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    backgroundColor: "rgba(0,0,0,0.45)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    backdropFilter: "blur(2px)",
   },
 };
