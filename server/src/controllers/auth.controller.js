@@ -1,5 +1,6 @@
 const User = require("../models/user.model");
 const Role = require("../models/role.model");
+const Token = require("../models/token.model");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 
@@ -71,13 +72,32 @@ exports.login = async (req, res) => {
     const token = jwt.sign(
       { id: user._id },
       process.env.JWT_SECRET || "secret_key_cua_tai", // Lấy từ .env
-      { expiresIn: "1d" },
+      { expiresIn: "10d" },
     );
+
+    // 4. Tạo Refresh Token
+    const refreshToken = jwt.sign(
+      { id: user._id },
+      process.env.REFRESH_TOKEN_SECRET || "refresh_secret_cua_tai",
+      { expiresIn: "30d" }
+    );
+
+    // 5. Lưu vào bảng Token
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // Lưu 30 ngày
+
+    await Token.create({
+      userId: user._id,
+      refreshToken: refreshToken,
+      deviceInfo: req.headers["user-agent"] || "Unknown Device",
+      ipAddress: req.ip || "Unknown IP",
+      expiresAt: expiresAt,
+    });
 
     res.status(200).json({
       success: true,
       message: "Đăng nhập thành công",
-      data: { user, token },
+      data: { user, token, refreshToken },
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
