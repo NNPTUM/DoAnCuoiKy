@@ -53,7 +53,7 @@ const getIo = () => {
 const initSocket = (server) => {
   ioInstance = new Server(server, {
     cors: {
-      origin: "http://localhost:5173", // URL của Frontend React
+      origin: "*", // Cho phép mọi origin chạy để test nhiều IP khác nhau
     },
   });
 
