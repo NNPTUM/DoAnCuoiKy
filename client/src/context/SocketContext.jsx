@@ -37,10 +37,22 @@ export const SocketProvider = ({ children }) => {
     setSocket(newSocket);
 
     newSocket.on("connect", () => {
+      console.log("[Socket] ✅ Kết nối thành công, socketId:", newSocket.id);
+      newSocket.emit("addUser", currentUserId);
+      console.log("[Socket] 🚀 Đã emit addUser, userId:", currentUserId);
+    });
+
+    newSocket.on("disconnect", (reason) => {
+      console.warn("[Socket] ⚠️ Ngắt kết nối, lý do:", reason);
+    });
+
+    newSocket.on("reconnect", () => {
+      console.log("[Socket] 🔄 Reconnect thành công, re-emit addUser");
       newSocket.emit("addUser", currentUserId);
     });
 
     newSocket.on("getOnlineUsers", (users) => {
+      console.log("[Socket] 🌍 Online users:", users.map(u => u.userId));
       setOnlineUsers(users);
     });
 

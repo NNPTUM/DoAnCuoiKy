@@ -108,6 +108,7 @@ export default function Message() {
     if (!socket) return;
 
     socket.on("getMessage", (data) => {
+      console.log("[Socket] 📩 Nhận được getMessage:", data);
       setArrivalMessage(data);
     });
 
