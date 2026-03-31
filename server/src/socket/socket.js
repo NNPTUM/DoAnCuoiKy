@@ -93,6 +93,14 @@ const initSocket = (server) => {
       }
     });
 
+    // 3.c Lắng nghe sự kiện Xóa cuộc trò chuyện cả 2 bên (để forward nếu cần)
+    socket.on("deleteConversationForBoth", ({ conversationId, receiverId }) => {
+      const receiver = getUser(receiverId);
+      if (receiver) {
+        ioInstance.to(receiver.socketId).emit("conversationDeleted", { conversationId });
+      }
+    });
+
     // Lắng nghe sự kiện cập nhật setting (để broadcast cập nhật UI ngay)
     socket.on("settingUpdated", async (userId) => {
       // Khi user cập nhật setting (ví dụ tắt Hiển thị trạng thái hoạt động), ta cần update lại onlineUsers list.
