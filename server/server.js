@@ -44,6 +44,7 @@ connectDB();
 
 // Khai báo Port và chạy Server
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   console.log(`Server đang chạy thành công tại http://localhost:${PORT}`);
+  console.log(`LAN access: http://172.168.10.123:${PORT}`);
 });
