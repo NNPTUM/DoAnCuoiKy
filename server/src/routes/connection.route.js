@@ -11,6 +11,7 @@ router.get(
   connectionController.getPendingRequests,
 );
 router.get("/requests/sent", verifyToken, connectionController.getSentRequests);
+router.delete("/requests/:receiverId", verifyToken, connectionController.withdrawFriendRequest);
 router.get(
   "/status/:targetId",
   verifyToken,
