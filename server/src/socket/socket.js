@@ -63,6 +63,8 @@ const initSocket = (server) => {
     // 1. Lắng nghe user đăng nhập và lưu lại
     socket.on("addUser", async (userId) => {
       await addUser(userId, socket.id);
+      console.log(`✅ addUser: ${userId} -> socketId: ${socket.id}`);
+      console.log("📋 onlineUsers hiện tại:", onlineUsers.map(u => `${u.userId}:${u.socketId}`));
       
       // Chỉ gửi những user đang public trạng thái online
       const publicUsers = onlineUsers.filter(u => !u.isHidden);
@@ -71,8 +73,11 @@ const initSocket = (server) => {
 
     // 2. Lắng nghe sự kiện Gửi tin nhắn
     socket.on("sendMessage", async ({ senderId, receiverId, text, messageData }) => {
+      console.log(`📨 sendMessage: from ${senderId} to ${receiverId}`);
+      console.log("📋 onlineUsers khi gửi:", onlineUsers.map(u => `${u.userId}:${u.socketId}`));
       const receiver = getUser(receiverId);
       if (receiver) {
+        console.log(`🎯 Tìm thấy receiver socket: ${receiver.socketId}`);
         // Kiểm tra xem receiver có bật thông báo tin nhắn không
         const setting = await UserSetting.findOne({ userId: receiverId });
         if (!setting || setting.notifications.message !== false) {
@@ -82,6 +87,8 @@ const initSocket = (server) => {
           });
         }
         ioInstance.to(receiver.socketId).emit("getMessage", messageData);
+      } else {
+        console.log(`❌ Không tìm thấy receiver: ${receiverId} trong onlineUsers!`);
       }
     });
 
