@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
+import LeftSidebar from "../components/LeftSidebar";
 
 const Friends = () => {
   const [activeTab, setActiveTab] = useState("suggestions");
@@ -146,37 +147,7 @@ const Friends = () => {
 
       <div style={styles.mainLayout}>
         {/* ===== LEFT SIDEBAR ===== */}
-        <aside style={styles.leftSidebar}>
-          <div style={{ display: "flex", alignItems: "center", gap: "12px", cursor: "pointer" }} onClick={() => navigate("/profile")}>
-            <img src={currentUser?.avatarUrl} alt="Me" style={styles.profileImg} />
-            <div>
-              <p style={{ fontWeight: 700, fontSize: "14px", margin: 0 }}>{currentUser?.username}</p>
-              <p style={{ fontSize: "12px", color: "#6c759e", margin: 0 }}>@{currentUser?.username?.toLowerCase()}</p>
-            </div>
-          </div>
-          <nav style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            {[ { icon: "home", label: "Trang chủ", path: "/" }, { icon: "group", label: "Bạn bè", path: "/friends" }, { icon: "person", label: "Hồ sơ", path: "/profile" }, { icon: "message", label: "Tin nhắn", path: "/messages" } ].map(
-              (item) => (
-                <a
-                  key={item.icon}
-                  href={item.path}
-                  style={{
-                    ...styles.navLink,
-                    backgroundColor: item.path === "/friends" ? "#1877F2" : "transparent",
-                    color: item.path === "/friends" ? "#fff" : "#6c759e",
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    navigate(item.path);
-                  }}
-                >
-                  <span className="material-symbols-outlined">{item.icon}</span>
-                  {item.label}
-                </a>
-              )
-            )}
-          </nav>
-        </aside>
+        <LeftSidebar style={styles.leftSidebar} />
 
         {/* ===== CENTER CONTENT ===== */}
         <main style={{ flex: 1, maxWidth: "600px" }}>

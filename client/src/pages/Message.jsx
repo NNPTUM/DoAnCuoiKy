@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
 import moment from "moment";
 import { io } from "socket.io-client";
+import LeftSidebar from "../components/LeftSidebar";
 
 export default function Message() {
   const navigate = useNavigate();
@@ -381,61 +382,8 @@ export default function Message() {
       {/* ===== MAIN LAYOUT ===== */}
       <div style={styles.mainLayout}>
         {/* ===== LEFT SIDEBAR ===== */}
-        <aside style={styles.leftSidebar}>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              cursor: "pointer",
-            }}
-            onClick={() => navigate("/profile")}
-          >
-            <img
-              src={currentUser?.avatarUrl}
-              alt="Me"
-              style={styles.profileImg}
-            />
-            <div>
-              <p style={{ fontWeight: 700, fontSize: "14px", margin: 0 }}>
-                {currentUser?.username}
-              </p>
-              <p style={{ fontSize: "12px", color: "#6c759e", margin: 0 }}>
-                @{currentUser?.username?.toLowerCase()}
-              </p>
-            </div>
-          </div>
-          <nav style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-            {[
-              { icon: "home", label: "Trang chủ", path: "/" },
-              { icon: "group", label: "Bạn bè", path: "/friends" },
-              { icon: "person", label: "Hồ sơ", path: "/profile" },
-              { icon: "explore", label: "Khám phá", path: "#" },
-              { icon: "message", label: "Tin nhắn", path: "/messages" },
-              { icon: "settings", label: "Cài đặt", path: "/settings" },
-            ].map((item) => (
-              <a
-                key={item.icon}
-                href={item.path}
-                style={{
-                  ...styles.navLink,
-                  backgroundColor:
-                    activeTab === item.path ? "#1877F2" : "transparent",
-                  color: activeTab === item.path ? "#fff" : "#6c759e",
-                }}
-                onClick={(e) => {
-                  if (item.path.startsWith("/")) {
-                    e.preventDefault();
-                    navigate(item.path);
-                  }
-                }}
-              >
-                <span className="material-symbols-outlined">{item.icon}</span>
-                {item.label}
-              </a>
-            ))}
-          </nav>
-        </aside>
+        {/* ===== LEFT SIDEBAR ===== */}
+        <LeftSidebar style={styles.leftSidebar} />
 
         {/* ===== MESSAGE UI ===== */}
         <main style={styles.messageBox}>

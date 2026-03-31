@@ -1,4 +1,6 @@
 const Conversation = require("../models/conversation.model");
+const UserSetting = require("../models/user_setting.model");
+const Friendship = require("../models/friendship.model");
 
 // 1. LẤY DANH SÁCH CUỘC TRÒ CHUYỆN CỦA USER HIỆN TẠI
 exports.getConversations = async (req, res) => {
@@ -36,8 +38,25 @@ exports.createOrGetConversation = async (req, res) => {
       members: { $all: [senderId, receiverId] },
     }).populate("members", "username avatarUrl");
 
-    // Nếu chưa từng chat, tạo mới phòng chat
+    // Nếu chưa từng chat, tiến hành kiểm tra Quyền riêng tư của receiver
     if (!conversation) {
+      const receiverSetting = await UserSetting.findOne({ userId: receiverId });
+      
+      // Mặc định là 'everyone', nếu họ set 'friends' thì kiểm tra
+      if (receiverSetting && receiverSetting.privacy?.whoCanMessageMe === "friends") {
+        const isFriend = await Friendship.findOne({
+          user1: { $in: [senderId, receiverId] },
+          user2: { $in: [senderId, receiverId] },
+        });
+
+        if (!isFriend) {
+          return res.status(403).json({
+            success: false,
+            message: "Người dùng này chỉ nhận tin nhắn từ bạn bè.",
+          });
+        }
+      }
+
       const newConversation = await Conversation.create({
         members: [senderId, receiverId],
         isGroupChat: false,
