@@ -1,0 +1,96 @@
+import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import { io } from "socket.io-client";
+import API from "../api/axios";
+
+const SocketContext = createContext();
+
+export const useSocket = () => {
+  return useContext(SocketContext);
+};
+
+export const SocketProvider = ({ children }) => {
+  const [socket, setSocket] = useState(null);
+  const [onlineUsers, setOnlineUsers] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [toastMessage, setToastMessage] = useState(null);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const fetchPendingCount = async () => {
+    try {
+      const res = await API.get("/connections/requests/pending");
+      if (res.data.success) {
+        setPendingCount(res.data.data.length);
+      }
+    } catch (error) {
+      console.error("Lỗi lấy thông báo lời mời kết bạn:", error);
+    }
+  };
+
+  useEffect(() => {
+    const currentUser = JSON.parse(localStorage.getItem("user"));
+    if (!currentUser) return;
+
+    fetchPendingCount();
+
+    const currentUserId = currentUser.id || currentUser._id;
+    const newSocket = io("http://localhost:5000");
+    setSocket(newSocket);
+
+    newSocket.on("connect", () => {
+      newSocket.emit("addUser", currentUserId);
+    });
+
+    newSocket.on("getOnlineUsers", (users) => {
+      setOnlineUsers(users);
+    });
+
+    // Lắng nghe thông báo chung (Kết bạn, Tag...)
+    newSocket.on("newNotification", (data) => {
+      setNotifications((prev) => [data, ...prev]);
+      // Hiển thị toast message tạm thời
+      setToastMessage(data.message);
+      setTimeout(() => setToastMessage(null), 4000);
+    });
+
+    // Lắng nghe đếm ngược pending
+    newSocket.on("pendingFriendRequestCount", () => {
+      fetchPendingCount();
+    });
+
+    return () => {
+      newSocket.disconnect();
+    };
+  }, []);
+
+  return (
+    <SocketContext.Provider value={{ socket, onlineUsers, notifications, toastMessage, pendingCount, setPendingCount }}>
+      {children}
+      {/* Toast Notification Đơn giản */}
+      {toastMessage && (
+        <div style={styles.toast}>
+          <span className="material-symbols-outlined" style={{ color: "#1877F2", marginRight: "8px" }}>info</span>
+          {toastMessage}
+        </div>
+      )}
+    </SocketContext.Provider>
+  );
+};
+
+const styles = {
+  toast: {
+    position: "fixed",
+    bottom: "24px",
+    right: "24px",
+    backgroundColor: "#fff",
+    color: "#0f1419",
+    padding: "16px 24px",
+    borderRadius: "12px",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+    zIndex: 9999,
+    display: "flex",
+    alignItems: "center",
+    fontWeight: "bold",
+    fontSize: "14px",
+    animation: "slideIn 0.3s ease-out forwards",
+  }
+};

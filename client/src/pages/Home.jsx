@@ -4,13 +4,14 @@ import API from "../api/axios";
 import moment from "moment";
 import UserHoverCard from "../components/UserHoverCard";
 import LeftSidebar from "../components/LeftSidebar";
+import TopNavbar from "../components/TopNavbar";
+import { useSocket } from "../context/SocketContext";
 
 const Home = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [content, setContent] = useState(""); // Lưu nội dung bài viết mới
   const [isPosting, setIsPosting] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
   const [selectedImages, setSelectedImages] = useState([]); // File ảnh chọn từ máy
   const [editingPostId, setEditingPostId] = useState(null);
   const [editingContent, setEditingContent] = useState("");
@@ -31,20 +32,10 @@ const Home = () => {
       navigate("/login");
     } else {
       fetchPosts();
-      fetchPendingCount();
+      
     }
   }, []);
 
-  const fetchPendingCount = async () => {
-    try {
-      const res = await API.get("/connections/requests/pending");
-      if (res.data.success) {
-        setPendingCount(res.data.data.length);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  };
 
   // Hàm lấy danh sách bài viết từ Backend
   const fetchPosts = async () => {
@@ -352,52 +343,7 @@ const Home = () => {
       }}
     >
       {/* ===== TOP NAVBAR ===== */}
-      <nav style={styles.navbar}>
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-          <span style={styles.logo}>Tồn Lùng</span>
-          <div style={styles.searchBar}>
-            <span
-              className="material-symbols-outlined"
-              style={{ color: "#6c759e" }}
-            >
-              search
-            </span>
-            <input
-              type="text"
-              placeholder="Tìm kiếm cộng đồng..."
-              style={styles.searchInput}
-            />
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ position: "relative", cursor: "pointer", display: "flex", alignItems: "center" }} onClick={() => navigate("/friends")}>
-            <span className="material-symbols-outlined" style={{ fontSize: "28px", color: "#6c759e" }}>notifications</span>
-            {pendingCount > 0 && (
-              <span style={{
-                position: "absolute", top: "-5px", right: "-5px", backgroundColor: "#e74c3c", color: "white",
-                borderRadius: "50%", padding: "2px 6px", fontSize: "10px", fontWeight: "bold"
-              }}>
-                {pendingCount}
-              </span>
-            )}
-          </div>
-          <img
-            src={currentUser?.avatarUrl}
-            alt="Profile"
-            style={{ ...styles.navAvatar, cursor: "pointer" }}
-            onClick={() => navigate("/profile")}
-          />
-          <button
-            onClick={() => {
-              localStorage.clear();
-              navigate("/login");
-            }}
-            style={styles.logoutBtn}
-          >
-            Đăng xuất
-          </button>
-        </div>
-      </nav>
+      <TopNavbar />
 
       <div style={styles.mainLayout}>
         {/* ===== LEFT SIDEBAR ===== */}

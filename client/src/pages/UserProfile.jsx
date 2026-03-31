@@ -3,6 +3,8 @@ import { useNavigate, useParams } from "react-router-dom";
 import API from "../api/axios";
 import moment from "moment";
 import LeftSidebar from "../components/LeftSidebar";
+import TopNavbar from "../components/TopNavbar";
+import { useSocket } from "../context/SocketContext";
 
 const UserProfile = () => {
   const { userId } = useParams();
@@ -22,7 +24,6 @@ const UserProfile = () => {
   const [loading, setLoading] = useState(true);
   const [friendStatus, setFriendStatus] = useState("none"); // 'none' | 'sent' | 'pending' | 'friends'
   const [sending, setSending] = useState(false);
-  const [pendingCount, setPendingCount] = useState(0);
   const [likedPosts, setLikedPosts] = useState({});
 
   // Comment states
@@ -44,18 +45,16 @@ const UserProfile = () => {
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [profileRes, postsRes, statusRes, pendingRes, reactionsRes] = await Promise.all([
+      const [profileRes, postsRes, statusRes, reactionsRes] = await Promise.all([
         API.get(`/auth/users/${userId}`),
         API.get(`/posts/user/${userId}`),
         API.get(`/connections/status/${userId}`),
-        API.get("/connections/requests/pending"),
         API.get("/posts/reactions/my-posts"),
       ]);
 
       if (profileRes.data.success) setProfileData(profileRes.data.data);
       if (postsRes.data.success) setPosts(postsRes.data.data);
       if (statusRes.data.success) setFriendStatus(statusRes.data.status);
-      if (pendingRes.data.success) setPendingCount(pendingRes.data.data.length);
 
       if (reactionsRes.data.success) {
         const likedMap = {};
@@ -78,6 +77,20 @@ const UserProfile = () => {
       if (res.data.success) setFriendStatus("sent");
     } catch (err) {
       alert(err.response?.data?.message || "Lỗi gửi lời mời");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleWithdrawFriend = async () => {
+    setSending(true);
+    try {
+      const res = await API.delete(`/connections/requests/${userId}`);
+      if (res.data.success) {
+        setFriendStatus("none");
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Lỗi thu hồi lời mời");
     } finally {
       setSending(false);
     }
@@ -233,8 +246,12 @@ const UserProfile = () => {
     }
     if (friendStatus === "sent") {
       return (
-        <button style={{ ...styles.btn, ...styles.grayBtn }} disabled>
-          Đã gửi lời mời
+        <button 
+          style={{ ...styles.btn, ...styles.grayBtn, cursor: "pointer", color: "#e74c3c" }} 
+          onClick={handleWithdrawFriend} 
+          disabled={sending}
+        >
+          {sending ? "Đang xử lý..." : "Thu hồi lời mời"}
         </button>
       );
     }
@@ -256,34 +273,7 @@ const UserProfile = () => {
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f0f2f5", fontFamily: "'Inter', sans-serif", color: "#232c51" }}>
       {/* TOP NAVBAR */}
-      <nav style={styles.navbar}>
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-          <span onClick={() => navigate("/")} style={{ ...styles.logo, cursor: "pointer" }}>Tồn Lùng</span>
-          <div style={styles.searchBar}>
-            <span className="material-symbols-outlined" style={{ color: "#6c759e" }}>search</span>
-            <input type="text" placeholder="Tìm kiếm cộng đồng..." style={styles.searchInput} />
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ position: "relative", cursor: "pointer", display: "flex", alignItems: "center" }} onClick={() => navigate("/friends")}>
-            <span className="material-symbols-outlined" style={{ fontSize: "28px", color: "#6c759e" }}>notifications</span>
-            {pendingCount > 0 && (
-              <span style={{ position: "absolute", top: "-5px", right: "-5px", backgroundColor: "#e74c3c", color: "white", borderRadius: "50%", padding: "2px 6px", fontSize: "10px", fontWeight: "bold" }}>
-                {pendingCount}
-              </span>
-            )}
-          </div>
-          <img
-            src={currentUser?.avatarUrl || `https://ui-avatars.com/api/?name=${currentUser?.username}`}
-            alt="me"
-            style={{ ...styles.navAvatar, cursor: "pointer" }}
-            onClick={() => navigate("/profile")}
-          />
-          <button onClick={() => { localStorage.clear(); navigate("/login"); }} style={styles.logoutBtn}>
-            Đăng xuất
-          </button>
-        </div>
-      </nav>
+      <TopNavbar />
 
       <div style={styles.mainLayout}>
         {/* LEFT SIDEBAR */}

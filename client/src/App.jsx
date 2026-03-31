@@ -10,6 +10,7 @@ import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
 import UserProfile from "./pages/UserProfile";
 import Friends from "./pages/Friends";
+import { SocketProvider } from "./context/SocketContext";
 
 function App() {
   // Apply theme and settings globally based on logged in user
@@ -46,19 +47,21 @@ function App() {
   }, []);
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        {/* Các route khác sẽ thêm vào đây sau */}
-        <Route path="/" element={<Home />} />
-        <Route path="/profile" element={<Profile />} />
-        <Route path="/profile/:userId" element={<UserProfile />} />
-        <Route path="/friends" element={<Friends />} />
-        <Route path="/register" element={<Register />} />
-        <Route path="/messages" element={<Message />} />
-        <Route path="/settings" element={<Settings />} />
-      </Routes>
-    </BrowserRouter>
+    <SocketProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          {/* Các route khác sẽ thêm vào đây sau */}
+          <Route path="/" element={<Home />} />
+          <Route path="/profile" element={<Profile />} />
+          <Route path="/profile/:userId" element={<UserProfile />} />
+          <Route path="/friends" element={<Friends />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/messages" element={<Message />} />
+          <Route path="/settings" element={<Settings />} />
+        </Routes>
+      </BrowserRouter>
+    </SocketProvider>
   );
 }
 

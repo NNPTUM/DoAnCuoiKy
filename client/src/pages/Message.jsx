@@ -2,8 +2,9 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
 import moment from "moment";
-import { io } from "socket.io-client";
 import LeftSidebar from "../components/LeftSidebar";
+import TopNavbar from "../components/TopNavbar";
+import { useSocket } from "../context/SocketContext";
 
 export default function Message() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ export default function Message() {
   const [activeConversation, setActiveConversation] = useState(null);
   const [inputText, setInputText] = useState("");
   const [activeTab] = useState("/messages");
-  const [pendingCount, setPendingCount] = useState(0);
+  const { pendingCount } = useSocket();
   const [showNewChatModal, setShowNewChatModal] = useState(false);
   const [friendsList, setFriendsList] = useState([]);
   const [contextMenu, setContextMenu] = useState(null); // { msgId }
@@ -60,8 +61,7 @@ export default function Message() {
 
   // Dùng để tự động cuộn xuống tin nhắn mới nhất
   const messagesEndRef = useRef(null);
-  const socket = useRef();
-  const socketInitialized = useRef(false); // Guard chống StrictMode chạy effect 2 lần
+  const { socket } = useSocket();
   const isSending = useRef(false); // Guard chống gửi 2 lần cùng lúc
   const [arrivalMessage, setArrivalMessage] = useState(null);
 
@@ -73,7 +73,7 @@ export default function Message() {
       return;
     }
     fetchConversations();
-    fetchPendingCount();
+    
   }, []);
 
   // 2. Tự động lấy tin nhắn khi chọn một cuộc trò chuyện khác
@@ -89,18 +89,14 @@ export default function Message() {
   }, [messages]);
 
   useEffect(() => {
-    // Guard: StrictMode gọi effect 2 lần trong dev → tạo 2 socket
-    if (socketInitialized.current) return;
-    socketInitialized.current = true;
+    if (!socket) return;
 
-    socket.current = io("http://localhost:5000");
-
-    socket.current.on("getMessage", (data) => {
+    socket.on("getMessage", (data) => {
       setArrivalMessage(data);
     });
 
     // Lắng nghe sự kiện thu hồi tin nhắn từ người kia
-    socket.current.on("messageRecalled", ({ messageId }) => {
+    socket.on("messageRecalled", ({ messageId }) => {
       setMessages((prev) =>
         prev.map((msg) =>
           msg._id === messageId
@@ -111,7 +107,7 @@ export default function Message() {
     });
 
     // Lắng nghe sự kiện sửa tin nhắn từ người kia
-    socket.current.on("messageEdited", ({ messageId, newText }) => {
+    socket.on("messageEdited", ({ messageId, newText }) => {
       setMessages((prev) =>
         prev.map((msg) =>
           msg._id === messageId
@@ -121,17 +117,15 @@ export default function Message() {
       );
     });
 
-    return () => {
-      socket.current?.disconnect();
-      socketInitialized.current = false;
-    };
-  }, []);
+    // Chú ý: trong Message.jsx, ta không đăng ký addUser ở đây nữa 
+    // vì SocketContext đã thực hiện việc đăng ký (bắn event `addUser`) lúc tạo context.
 
-  useEffect(() => {
-    if (currentUser) {
-      socket.current.emit("addUser", currentUserId);
-    }
-  }, [currentUser]);
+    return () => {
+      socket.off("getMessage");
+      socket.off("messageRecalled");
+      socket.off("messageEdited");
+    };
+  }, [socket]);
 
   useEffect(() => {
     if (!arrivalMessage || !activeConversation) return;
@@ -159,14 +153,6 @@ export default function Message() {
   }, [arrivalMessage, activeConversation]);
 
   // --- API CALLS ---
-  const fetchPendingCount = async () => {
-    try {
-      const res = await API.get("/connections/requests/pending");
-      if (res.data.success) setPendingCount(res.data.data.length);
-    } catch (error) {
-      console.error(error);
-    }
-  };
 
   const fetchConversations = async () => {
     try {
@@ -230,8 +216,8 @@ export default function Message() {
 
         // 3. Bắn tin nhắn qua Socket cho người nhận
         const receiver = getOtherUser(activeConversation);
-        if (receiver) {
-          socket.current.emit("sendMessage", {
+        if (receiver && socket) {
+          socket.emit("sendMessage", {
             senderId: currentUserId,
             receiverId: receiver._id,
             text: textToSend,
@@ -263,8 +249,8 @@ export default function Message() {
         );
         // Broadcast cho người nhận biết qua socket
         const receiver = getOtherUser(activeConversation);
-        if (receiver) {
-          socket.current.emit("recallMessage", {
+        if (receiver && socket) {
+          socket.emit("recallMessage", {
             messageId,
             conversationId: activeConversation._id,
             receiverId: receiver._id,
@@ -293,8 +279,8 @@ export default function Message() {
         );
         // Broadcast cho người nhận biết qua socket
         const receiver = getOtherUser(activeConversation);
-        if (receiver) {
-          socket.current.emit("editMessage", {
+        if (receiver && socket) {
+          socket.emit("editMessage", {
             messageId,
             newText: editText.trim(),
             receiverId: receiver._id,
@@ -324,60 +310,7 @@ export default function Message() {
   return (
     <div style={styles.container} onClick={handleGlobalClick}>
       {/* ===== TOP NAVBAR ===== */}
-      <nav style={styles.navbar}>
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-          <span style={styles.logo}>Tồn Lùng</span>
-          <div style={styles.searchBar}>
-            <span
-              className="material-symbols-outlined"
-              style={{ color: "#6c759e" }}
-            >
-              search
-            </span>
-            <input
-              type="text"
-              placeholder="Tìm kiếm tin nhắn..."
-              style={styles.searchInput}
-            />
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <div
-            style={{
-              position: "relative",
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-            }}
-            onClick={() => navigate("/friends")}
-          >
-            <span
-              className="material-symbols-outlined"
-              style={{ fontSize: "28px", color: "#6c759e" }}
-            >
-              notifications
-            </span>
-            {pendingCount > 0 && (
-              <span style={styles.badge}>{pendingCount}</span>
-            )}
-          </div>
-          <img
-            src={currentUser?.avatarUrl}
-            alt="Profile"
-            style={{ ...styles.navAvatar, cursor: "pointer" }}
-            onClick={() => navigate("/profile")}
-          />
-          <button
-            onClick={() => {
-              localStorage.clear();
-              navigate("/login");
-            }}
-            style={styles.logoutBtn}
-          >
-            Đăng xuất
-          </button>
-        </div>
-      </nav>
+      <TopNavbar />
 
       {/* ===== MAIN LAYOUT ===== */}
       <div style={styles.mainLayout}>

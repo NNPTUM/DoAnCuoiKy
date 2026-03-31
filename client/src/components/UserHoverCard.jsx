@@ -95,6 +95,23 @@ const UserHoverCard = ({ user, children }) => {
     }
   };
 
+  const handleWithdrawFriend = async (e) => {
+    e.stopPropagation();
+    if (!user?._id) return;
+    setSending(true);
+    try {
+      const res = await API.delete(`/connections/requests/${user._id}`);
+      if (res.data.success) {
+        setFriendStatus("none");
+        statusFetchedRef.current = true;
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Lỗi thu hồi lời mời");
+    } finally {
+      setSending(false);
+    }
+  };
+
   if (!user) return children;
 
   return (
@@ -182,8 +199,12 @@ const UserHoverCard = ({ user, children }) => {
                       Đang chờ phê duyệt
                     </button>
                   ) : friendStatus === "sent" ? (
-                    <button style={{ ...styles.btn, ...styles.grayBtn }} disabled>
-                      Đã gửi lời mời
+                    <button 
+                      style={{ ...styles.btn, ...styles.grayBtn, cursor: "pointer", color: "#e74c3c" }} 
+                      onClick={handleWithdrawFriend}
+                      disabled={sending}
+                    >
+                      {sending ? "Đang xử lý..." : "Thu hồi lời mời"}
                     </button>
                   ) : (
                     <button

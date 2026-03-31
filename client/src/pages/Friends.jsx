@@ -2,6 +2,8 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
 import LeftSidebar from "../components/LeftSidebar";
+import TopNavbar from "../components/TopNavbar";
+import { useSocket } from "../context/SocketContext";
 
 const Friends = () => {
   const [activeTab, setActiveTab] = useState("suggestions");
@@ -10,6 +12,7 @@ const Friends = () => {
   const [friends, setFriends] = useState([]);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [loading, setLoading] = useState(false);
+  const { pendingCount, setPendingCount } = useSocket();
 
   const navigate = useNavigate();
   const currentUser = JSON.parse(localStorage.getItem("user"));
@@ -59,6 +62,7 @@ const Friends = () => {
       const res = await API.put(`/connections/requests/${requestId}/accept`);
       if (res.data.success) {
         setPendingRequests((prev) => prev.filter((r) => r._id !== requestId));
+        setPendingCount(prev => Math.max(0, prev - 1));
         alert("Đã kết bạn!");
       }
     } catch (error) {
@@ -71,6 +75,7 @@ const Friends = () => {
       const res = await API.put(`/connections/requests/${requestId}/decline`);
       if (res.data.success) {
         setPendingRequests((prev) => prev.filter((r) => r._id !== requestId));
+        setPendingCount(prev => Math.max(0, prev - 1));
       }
     } catch (error) {
       alert(error.response?.data?.message || "Lỗi từ chối");
@@ -118,32 +123,7 @@ const Friends = () => {
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#f0f2f5", fontFamily: "'Inter', sans-serif", color: "#232c51" }}>
       {/* ===== TOP NAVBAR ===== */}
-      <nav style={styles.navbar}>
-        <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-          <span onClick={() => navigate("/")} style={{...styles.logo, cursor: "pointer"}}>Tồn Lùng</span>
-          <div style={styles.searchBar}>
-            <span className="material-symbols-outlined" style={{ color: "#6c759e" }}>search</span>
-            <input type="text" placeholder="Tìm kiếm cộng đồng..." style={styles.searchInput} />
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <div style={{ position: "relative", cursor: "pointer", display: "flex", alignItems: "center" }} onClick={() => setActiveTab("requests")}>
-            <span className="material-symbols-outlined" style={{ fontSize: "28px", color: "#6c759e" }}>notifications</span>
-            {pendingRequests.length > 0 && (
-              <span style={{
-                position: "absolute", top: "-5px", right: "-5px", backgroundColor: "#e74c3c", color: "white",
-                borderRadius: "50%", padding: "2px 6px", fontSize: "10px", fontWeight: "bold"
-              }}>
-                {pendingRequests.length}
-              </span>
-            )}
-          </div>
-          <img src={currentUser?.avatarUrl} alt="Profile" style={{...styles.navAvatar, cursor: "pointer"}} onClick={() => navigate("/profile")} />
-          <button onClick={() => { localStorage.clear(); navigate("/login"); }} style={styles.logoutBtn}>
-            Đăng xuất
-          </button>
-        </div>
-      </nav>
+      <TopNavbar />
 
       <div style={styles.mainLayout}>
         {/* ===== LEFT SIDEBAR ===== */}
