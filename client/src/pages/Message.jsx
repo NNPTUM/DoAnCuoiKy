@@ -32,6 +32,14 @@ export default function Message() {
   // Ref lưu Promise upload đang chạy ngầm (optimistic upload)
   const pendingUploadRef = useRef(null); // Promise<string> - resolve ra imageUrl
 
+  // --- DELETE CONVERSATION STATES ---
+  const [convoMenuId, setConvoMenuId] = useState(null); // _id của conv đang hiển menu
+  const [deleteModal, setDeleteModal] = useState(null); // { conv } | null
+
+  // --- INFO PANEL STATES ---
+  const [showInfoPanel, setShowInfoPanel] = useState(false);
+  const [lightboxImg, setLightboxImg] = useState(null); // URL ảnh đang xem to
+
   const openNewChatModal = async () => {
     setShowNewChatModal(true);
     try {
@@ -125,6 +133,13 @@ export default function Message() {
       );
     });
 
+    // Lắng nghe sự kiện xóa cuộc trò chuyện từ người kia (xóa cả 2 bên)
+    socket.on("conversationDeleted", ({ conversationId }) => {
+      setConversations((prev) => prev.filter((c) => c._id !== conversationId));
+      setActiveConversation((prev) => (prev?._id === conversationId ? null : prev));
+      setMessages((prev) => (activeConversation?._id === conversationId ? [] : prev));
+    });
+
     // Chú ý: trong Message.jsx, ta không đăng ký addUser ở đây nữa 
     // vì SocketContext đã thực hiện việc đăng ký (bắn event `addUser`) lúc tạo context.
 
@@ -132,6 +147,7 @@ export default function Message() {
       socket.off("getMessage");
       socket.off("messageRecalled");
       socket.off("messageEdited");
+      socket.off("conversationDeleted");
     };
   }, [socket]);
 
@@ -438,6 +454,53 @@ export default function Message() {
   // Đóng context menu khi click ra ngoài
   const handleGlobalClick = () => {
     if (contextMenu) setContextMenu(null);
+    if (convoMenuId) setConvoMenuId(null);
+  };
+
+  // Xóa đoạn chat chỉ bên mình
+  const handleDeleteForMe = async (conv) => {
+    setDeleteModal(null);
+    setConvoMenuId(null);
+    try {
+      const res = await API.delete(`/conversations/${conv._id}/delete-for-me`);
+      if (res.data.success) {
+        setConversations((prev) => prev.filter((c) => c._id !== conv._id));
+        if (activeConversation?._id === conv._id) {
+          setActiveConversation(null);
+          setMessages([]);
+        }
+      }
+    } catch (error) {
+      console.error("Xóa đoạn chat thất bại:", error);
+      alert("Không thể xóa đoạn chat lúc này.");
+    }
+  };
+
+  // Xóa đoạn chat cả 2 bên
+  const handleDeleteForBoth = async (conv) => {
+    setDeleteModal(null);
+    setConvoMenuId(null);
+    try {
+      const res = await API.delete(`/conversations/${conv._id}/delete-for-both`);
+      if (res.data.success) {
+        setConversations((prev) => prev.filter((c) => c._id !== conv._id));
+        if (activeConversation?._id === conv._id) {
+          setActiveConversation(null);
+          setMessages([]);
+        }
+        // Thông báo cho người kia qua socket
+        const receiver = getOtherUser(conv);
+        if (receiver && socket) {
+          socket.emit("deleteConversationForBoth", {
+            conversationId: conv._id,
+            receiverId: receiver._id,
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Xóa đoạn chat thất bại:", error);
+      alert("Không thể xóa đoạn chat lúc này.");
+    }
   };
 
   // Tìm thông tin người đang chat cùng (lọc bản thân ra khỏi mảng members)
@@ -502,6 +565,7 @@ export default function Message() {
                   return (
                     <div
                       key={conv._id}
+                      className="conv-item-wrap"
                       onClick={() => setActiveConversation(conv)}
                       style={{
                         ...styles.convItem,
@@ -509,6 +573,7 @@ export default function Message() {
                         borderLeft: isActive
                           ? "3px solid #1877F2"
                           : "3px solid transparent",
+                        position: "relative",
                       }}
                     >
                       <div style={styles.avatarWrap}>
@@ -550,6 +615,42 @@ export default function Message() {
                           </span>
                         </div>
                       </div>
+
+                      {/* Nút 3 chấm - xuất hiện khi hover */}
+                      <button
+                        className="conv-more-btn"
+                        style={styles.convoMoreBtn}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConvoMenuId(convoMenuId === conv._id ? null : conv._id);
+                        }}
+                        title="Tùy chọn"
+                      >
+                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                          more_horiz
+                        </span>
+                      </button>
+
+                      {/* Dropdown menu xóa */}
+                      {convoMenuId === conv._id && (
+                        <div
+                          style={styles.convoDropdown}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            style={styles.convoDropdownItem}
+                            onClick={() => {
+                              setConvoMenuId(null);
+                              setDeleteModal({ conv });
+                            }}
+                          >
+                            <span className="material-symbols-outlined" style={{ fontSize: "16px", color: "#e74c3c" }}>
+                              delete
+                            </span>
+                            Xóa đoạn chat
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })
@@ -609,7 +710,15 @@ export default function Message() {
                         videocam
                       </span>
                     </button>
-                    <button style={styles.iconBtnOutlined}>
+                    <button
+                      style={{
+                        ...styles.iconBtnOutlined,
+                        background: showInfoPanel ? "#e7f3ff" : "transparent",
+                        color: showInfoPanel ? "#1877F2" : "#1877F2",
+                      }}
+                      onClick={() => setShowInfoPanel((v) => !v)}
+                      title="Thông tin đoạn chat"
+                    >
                       <span className="material-symbols-outlined">info</span>
                     </button>
                   </div>
@@ -904,6 +1013,122 @@ export default function Message() {
               </div>
             )}
           </section>
+
+          {/* ===== INFO PANEL – cột thứ 3 bên phải, đẩy chatWindow thu nhỏ ===== */}
+          {showInfoPanel && activeConversation && (() => {
+            const otherUser = getOtherUser(activeConversation);
+            const sharedImages = messages.filter(
+              (m) => m.messageType === "image" && m.imageUrl && !m.isRecalled
+            );
+            return (
+              <div style={styles.infoPanel}>
+                {/* Header */}
+                <div style={styles.infoPanelHeader}>
+                  <span style={{ fontWeight: 700, fontSize: "14px", color: "#0f1419" }}>
+                    Thông tin
+                  </span>
+                  <button
+                    style={styles.infoPanelClose}
+                    onClick={() => setShowInfoPanel(false)}
+                    title="Đóng"
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>close</span>
+                  </button>
+                </div>
+
+                <div style={styles.infoPanelBody}>
+                  {/* Avatar + tên */}
+                  <div style={styles.infoPanelUser}>
+                    <img
+                      src={otherUser?.avatarUrl || "https://via.placeholder.com/150"}
+                      alt=""
+                      style={styles.infoPanelAvatar}
+                    />
+                    <div style={{ fontWeight: 700, fontSize: "14px", color: "#0f1419", marginTop: "6px" }}>
+                      {otherUser?.username}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "#1877F2" }}>Đang hoạt động</div>
+                  </div>
+
+                  <div style={styles.infoPanelDivider} />
+
+                  {/* Ảnh đã chia sẻ */}
+                  <div style={{ padding: "10px 12px" }}>
+                    <div style={styles.infoPanelSectionTitle}>
+                      <span className="material-symbols-outlined" style={{ fontSize: "15px", color: "#1877F2" }}>photo_library</span>
+                      Ảnh đã chia sẻ ({sharedImages.length})
+                    </div>
+                    {sharedImages.length === 0 ? (
+                      <div style={{ textAlign: "center", color: "#9aa0b4", fontSize: "12px", padding: "10px 0" }}>
+                        Chưa có ảnh nào
+                      </div>
+                    ) : (
+                      <div style={styles.imageGrid}>
+                        {sharedImages.map((m) => (
+                          <div
+                            key={m._id}
+                            className="image-grid-item"
+                            style={styles.imageGridItem}
+                            onClick={() => setLightboxImg(m.imageUrl)}
+                            title="Xem ảnh"
+                          >
+                            <img src={m.imageUrl} alt="" style={styles.imageGridImg} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={styles.infoPanelDivider} />
+
+                  {/* Xóa đoạn chat */}
+                  <div style={{ padding: "10px 12px" }}>
+                    <button
+                      className="info-delete-btn"
+                      style={styles.infoPanelDeleteBtn}
+                      onClick={() => setDeleteModal({ conv: activeConversation })}
+                    >
+                      <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>delete</span>
+                      Xóa đoạn chat
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ===== LIGHTBOX XEM \u1ea2NH TO ===== */}
+          {lightboxImg && (
+            <div
+              style={styles.lightboxOverlay}
+              onClick={() => setLightboxImg(null)}
+            >
+              <button
+                style={styles.lightboxClose}
+                onClick={() => setLightboxImg(null)}
+                title="Đóng"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: "26px" }}>close</span>
+              </button>
+              <img
+                src={lightboxImg}
+                alt="Xem ảnh"
+                style={styles.lightboxImg}
+                onClick={(e) => e.stopPropagation()}
+              />
+              <a
+                href={lightboxImg}
+                download
+                className="lightbox-download"
+                style={styles.lightboxDownload}
+                onClick={(e) => e.stopPropagation()}
+                title="Tải xuống"
+              >
+                <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>download</span>
+                Tải xuống
+              </a>
+            </div>
+          )}
         </main>
         {/* ===== MODAL TẠO TIN NHẮN MỚI ===== */}
         {showNewChatModal && (
@@ -1000,6 +1225,90 @@ export default function Message() {
             </div>
           </div>
         )}
+
+        {/* ===== MODAL XÓA ĐOẠN CHAT ===== */}
+        {deleteModal && (
+          <div
+            style={styles.modalOverlay}
+            onClick={() => setDeleteModal(null)}
+          >
+            <div
+              style={{
+                ...styles.modalContent,
+                maxWidth: "420px",
+                padding: 0,
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #eff3f4" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "4px" }}>
+                  <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "#fff0f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <span className="material-symbols-outlined" style={{ color: "#e74c3c", fontSize: "22px" }}>delete</span>
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 700, color: "#0f1419" }}>
+                      Xóa đoạn chat
+                    </h3>
+                    <p style={{ margin: 0, fontSize: "13px", color: "#6c759e" }}>
+                      với {deleteModal.conv && getOtherUser(deleteModal.conv)?.username}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Options */}
+              <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
+                {/* Lựa chọn 1: Chỉ xóa bên mình */}
+                <button
+                  style={styles.deleteOptionBtn}
+                  onClick={() => handleDeleteForMe(deleteModal.conv)}
+                >
+                  <div style={styles.deleteOptionIcon}>
+                    <span className="material-symbols-outlined" style={{ fontSize: "22px", color: "#1877F2" }}>person_remove</span>
+                  </div>
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f1419", marginBottom: "2px" }}>
+                      Chỉ xóa bên tôi
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#6c759e", lineHeight: 1.4 }}>
+                      Đoạn chat sẽ biến khỏi danh sách của bạn.
+                      Người kia vẫn thấy toàn bộ lịch sử.
+                    </div>
+                  </div>
+                </button>
+
+                {/* Lựa chọn 2: Xóa cả 2 bên */}
+                <button
+                  style={{ ...styles.deleteOptionBtn, borderColor: "#ffcdd2" }}
+                  onClick={() => handleDeleteForBoth(deleteModal.conv)}
+                >
+                  <div style={{ ...styles.deleteOptionIcon, background: "#fff0f0" }}>
+                    <span className="material-symbols-outlined" style={{ fontSize: "22px", color: "#e74c3c" }}>group_remove</span>
+                  </div>
+                  <div style={{ textAlign: "left" }}>
+                    <div style={{ fontWeight: 700, fontSize: "15px", color: "#e74c3c", marginBottom: "2px" }}>
+                      Xóa cả 2 bên
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#6c759e", lineHeight: 1.4 }}>
+                      Toàn bộ tin nhắn sẽ bị xóa vĩnh viễn. Cả 2 người đều không xem được nữa.
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {/* Cancel */}
+              <div style={{ padding: "0 24px 20px" }}>
+                <button
+                  style={styles.deleteCancelBtn}
+                  onClick={() => setDeleteModal(null)}
+                >
+                  Hủy
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       <style>{`
@@ -1008,7 +1317,16 @@ export default function Message() {
         ::-webkit-scrollbar-thumb { background: #dce2f5; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #b0b9d1; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes slideInRight { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
         .msg-image:hover { opacity: 0.9; }
+        .conv-item-wrap .conv-more-btn { opacity: 0; transition: opacity 0.15s; }
+        .conv-item-wrap:hover .conv-more-btn { opacity: 1; }
+        .conv-item-wrap:hover { background-color: #f7f9fc !important; }
+        .conv-more-btn:hover { background: #e4e6eb !important; }
+        .convo-dropdown-item:hover { background: #f0f2f5; }
+        .image-grid-item:hover img { transform: scale(1.08); opacity: 0.9; }
+        .lightbox-download:hover { background: rgba(255,255,255,0.25) !important; }
+        .info-delete-btn:hover { background: #ffe0e0 !important; }
       `}</style>
     </div>
   );
@@ -1122,7 +1440,8 @@ const styles = {
     borderRadius: "14px",
     boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
     display: "flex",
-    overflow: "hidden",
+    // overflow: hidden đã bỏ để info panel (left:100%) không bị clipped
+    position: "relative",
   },
   convoList: {
     width: "340px",
@@ -1198,6 +1517,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     backgroundColor: "#fff",
+    overflow: "hidden",
   },
   chatHeader: {
     height: "72px",
@@ -1559,5 +1879,246 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
     backdropFilter: "blur(2px)",
+  },
+  // Conversation item - nút 3 chấm
+  convoMoreBtn: {
+    position: "absolute",
+    right: "8px",
+    top: "50%",
+    transform: "translateY(-50%)",
+    background: "transparent",
+    border: "none",
+    borderRadius: "50%",
+    width: "30px",
+    height: "30px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    color: "#536471",
+    flexShrink: 0,
+    zIndex: 2,
+  },
+  // Dropdown nhỏ khi click nút 3 chấm
+  convoDropdown: {
+    position: "absolute",
+    right: "8px",
+    top: "calc(50% + 18px)",
+    backgroundColor: "#fff",
+    borderRadius: "10px",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+    zIndex: 200,
+    minWidth: "170px",
+    border: "1px solid #e5e7eb",
+    overflow: "hidden",
+  },
+  convoDropdownItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    width: "100%",
+    padding: "10px 14px",
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontSize: "14px",
+    color: "#e74c3c",
+    textAlign: "left",
+    fontWeight: 600,
+    transition: "background 0.15s",
+  },
+  // Delete modal option buttons
+  deleteOptionBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "14px",
+    width: "100%",
+    padding: "14px 16px",
+    background: "#fff",
+    border: "1.5px solid #e5e7eb",
+    borderRadius: "12px",
+    cursor: "pointer",
+    textAlign: "left",
+    transition: "border-color 0.15s, background 0.15s",
+  },
+  deleteOptionIcon: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "50%",
+    background: "#e7f3ff",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+  },
+  deleteCancelBtn: {
+    width: "100%",
+    padding: "11px 0",
+    background: "#f0f2f5",
+    border: "none",
+    borderRadius: "10px",
+    cursor: "pointer",
+    fontSize: "15px",
+    fontWeight: 600,
+    color: "#536471",
+    transition: "background 0.15s",
+  },
+
+  // ========== INFO PANEL – ló ra ngoài bên phải của messageBox ==========
+  infoPanel: {
+    position: "absolute",
+    left: "100%",          // đặt ngưỡc cạnh phải của messageBox
+    top: 0,
+    height: "100%",
+    width: "280px",
+    zIndex: 50,
+    backgroundColor: "#fff",
+    borderRadius: "0 14px 14px 0",
+    boxShadow: "4px 0 20px rgba(0,0,0,0.10)",
+    display: "flex",
+    flexDirection: "column",
+    overflowY: "auto",
+    animation: "slideInRight 0.22s cubic-bezier(.4,0,.2,1)",
+  },
+  infoPanelHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "16px 16px",
+    borderBottom: "1px solid #eff3f4",
+    flexShrink: 0,
+  },
+  infoPanelClose: {
+    background: "#f0f2f5",
+    border: "none",
+    borderRadius: "50%",
+    width: "32px",
+    height: "32px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    color: "#536471",
+  },
+  infoPanelBody: {
+    flex: 1,
+    overflowY: "auto",
+  },
+  infoPanelUser: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    padding: "20px 16px 16px",
+  },
+  infoPanelAvatar: {
+    width: "64px",
+    height: "64px",
+    borderRadius: "50%",
+    objectFit: "cover",
+    border: "3px solid #e7f3ff",
+  },
+  infoPanelDivider: {
+    height: "1px",
+    backgroundColor: "#eff3f4",
+    margin: "0 16px",
+  },
+  infoPanelSectionTitle: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    fontWeight: 700,
+    fontSize: "13px",
+    color: "#0f1419",
+    marginBottom: "10px",
+    padding: "12px 0 0",
+  },
+  infoPanelDeleteBtn: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    width: "100%",
+    padding: "11px 14px",
+    background: "#fff0f0",
+    border: "1.5px solid #ffcdd2",
+    borderRadius: "10px",
+    cursor: "pointer",
+    fontSize: "14px",
+    color: "#e74c3c",
+    fontWeight: 600,
+    marginTop: "4px",
+    transition: "background 0.15s",
+  },
+
+  // ========== IMAGE GRID ==========
+  imageGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(3, 1fr)",
+    gap: "4px",
+  },
+  imageGridItem: {
+    aspectRatio: "1",
+    overflow: "hidden",
+    borderRadius: "6px",
+    cursor: "pointer",
+  },
+  imageGridImg: {
+    width: "100%",
+    height: "100%",
+    objectFit: "cover",
+    transition: "transform 0.2s, opacity 0.2s",
+  },
+
+  // ========== LIGHTBOX ==========
+  lightboxOverlay: {
+    position: "fixed",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(0,0,0,0.88)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 2000,
+    flexDirection: "column",
+    gap: "16px",
+  },
+  lightboxClose: {
+    position: "absolute",
+    top: "20px",
+    right: "20px",
+    background: "rgba(255,255,255,0.15)",
+    border: "none",
+    borderRadius: "50%",
+    width: "44px",
+    height: "44px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    color: "#fff",
+    backdropFilter: "blur(4px)",
+  },
+  lightboxImg: {
+    maxWidth: "88vw",
+    maxHeight: "80vh",
+    objectFit: "contain",
+    borderRadius: "10px",
+    boxShadow: "0 8px 40px rgba(0,0,0,0.5)",
+  },
+  lightboxDownload: {
+    display: "flex",
+    alignItems: "center",
+    gap: "6px",
+    color: "#fff",
+    background: "rgba(255,255,255,0.15)",
+    backdropFilter: "blur(4px)",
+    borderRadius: "8px",
+    padding: "8px 18px",
+    textDecoration: "none",
+    fontSize: "14px",
+    fontWeight: 600,
+    border: "1px solid rgba(255,255,255,0.25)",
+    transition: "background 0.15s",
   },
 };
