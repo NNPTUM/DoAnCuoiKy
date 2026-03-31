@@ -7,15 +7,19 @@ let ioInstance = null; // Biến toàn cục giữ instance socket
 
 // Hàm thêm user vào danh sách online (nếu user cho phép hiển thị)
 const addUser = async (userId, socketId) => {
-  // Check setting xem có cho hiển thị online không
   try {
     const setting = await UserSetting.findOne({ userId });
     let isHidden = false;
-    // Nếu setting có privacy.showOnlineStatus === false, không đưa vào danh sách online
     if (setting && setting.privacy && setting.privacy.showOnlineStatus === false) {
       isHidden = true;
     }
     
+    // Kiểm tra xem socket thực sự còn đang kết nối không trước khi add vào (tránh race condition với ngắt kết nối)
+    if (ioInstance && !ioInstance.sockets.sockets.has(socketId)) {
+       console.log(`⚠️ Socket ${socketId} đã ngắt kết nối trước khi addUser hoàn thành. Bỏ qua.`);
+       return;
+    }
+
     const existingUser = onlineUsers.find((user) => user.userId === userId);
     if (existingUser) {
       existingUser.socketId = socketId;
@@ -24,6 +28,7 @@ const addUser = async (userId, socketId) => {
       onlineUsers.push({ userId, socketId, isHidden });
     }
   } catch(error) {
+    if (ioInstance && !ioInstance.sockets.sockets.has(socketId)) return;
     const existingUser = onlineUsers.find((user) => user.userId === userId);
     if (existingUser) {
       existingUser.socketId = socketId;
