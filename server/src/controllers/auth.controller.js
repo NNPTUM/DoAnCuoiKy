@@ -1,13 +1,38 @@
 const User = require("../models/user.model");
 const Role = require("../models/role.model");
 const Token = require("../models/token.model");
+const SystemSetting = require("../models/system_setting.model");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+
+const getRegistrationEnabledStatus = async () => {
+  const settings = await SystemSetting.findOne()
+    .select("features.isRegistrationEnabled")
+    .lean();
+
+  if (!settings) {
+    return true;
+  }
+
+  if (settings?.features?.isRegistrationEnabled === undefined) {
+    return true;
+  }
+
+  return Boolean(settings.features.isRegistrationEnabled);
+};
 
 // ĐĂNG KÝ
 exports.register = async (req, res) => {
   try {
     const { username, email, password, roleId } = req.body;
+
+    const isRegistrationEnabled = await getRegistrationEnabledStatus();
+    if (!isRegistrationEnabled) {
+      return res.status(403).json({
+        success: false,
+        message: "Đăng ký tài khoản đang tạm thời bị tắt bởi quản trị viên",
+      });
+    }
 
     // 1. Kiểm tra user tồn tại chưa
     const userExists = await User.findOne({ email });
@@ -49,6 +74,18 @@ exports.register = async (req, res) => {
   }
 };
 
+exports.getRegistrationStatus = async (req, res) => {
+  try {
+    const isRegistrationEnabled = await getRegistrationEnabledStatus();
+    return res.status(200).json({
+      success: true,
+      data: { isRegistrationEnabled },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // ĐĂNG NHẬP (Trả về JWT)
 exports.login = async (req, res) => {
   try {
@@ -79,7 +116,7 @@ exports.login = async (req, res) => {
     const refreshToken = jwt.sign(
       { id: user._id },
       process.env.REFRESH_TOKEN_SECRET || "refresh_secret_cua_tai",
-      { expiresIn: "30d" }
+      { expiresIn: "30d" },
     );
 
     // 5. Lưu vào bảng Token
@@ -134,16 +171,18 @@ exports.updateProfile = async (req, res) => {
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
-      { 
+      {
         ...(username && { username }),
         ...(bio !== undefined && { bio }),
-        ...(avatarUrl && { avatarUrl })
+        ...(avatarUrl && { avatarUrl }),
       },
-      { returnDocument: 'after' }
+      { returnDocument: "after" },
     ).select("-password -roleId");
 
     if (!updatedUser) {
-      return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Người dùng không tồn tại" });
     }
 
     return res.status(200).json({
@@ -153,7 +192,9 @@ exports.updateProfile = async (req, res) => {
     });
   } catch (error) {
     if (error.code === 11000) {
-       return res.status(400).json({ success: false, message: "Tên người dùng đã được sử dụng" });
+      return res
+        .status(400)
+        .json({ success: false, message: "Tên người dùng đã được sử dụng" });
     }
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -164,7 +205,9 @@ exports.getUserById = async (req, res) => {
     const { userId } = req.params;
     const user = await User.findById(userId).select("-password -roleId -email");
     if (!user) {
-      return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Người dùng không tồn tại" });
     }
     return res.status(200).json({ success: true, data: user });
   } catch (error) {

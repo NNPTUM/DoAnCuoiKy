@@ -1,6 +1,17 @@
+const mongoose = require("mongoose");
 const Report = require("../models/report.model");
 const Post = require("../models/post.model");
 const User = require("../models/user.model");
+
+const ALLOWED_REPORT_REASONS = new Set([
+  "spam",
+  "hate_speech",
+  "nudity",
+  "violence",
+  "harassment",
+  "false_information",
+  "other",
+]);
 
 // GET /api/moderator/reports
 const getReports = async (req, res) => {
@@ -43,13 +54,11 @@ const updateReportStatus = async (req, res) => {
         .json({ success: false, message: "Không tìm thấy báo cáo" });
     }
 
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Đã cập nhật trạng thái báo cáo",
-        data: report,
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Đã cập nhật trạng thái báo cáo",
+      data: report,
+    });
   } catch (error) {
     console.error("Lỗi updateReportStatus:", error);
     return res.status(500).json({ success: false, message: "Lỗi server" });
@@ -125,22 +134,89 @@ const submitReport = async (req, res) => {
   try {
     const { targetType, targetId, reason, description } = req.body;
 
+    if (!targetType || !targetId || !reason) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu thông tin bắt buộc để gửi báo cáo",
+      });
+    }
+
+    if (!["Post", "User", "Comment", "Message"].includes(targetType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Loại đối tượng báo cáo không hợp lệ",
+      });
+    }
+
+    if (!ALLOWED_REPORT_REASONS.has(reason)) {
+      return res.status(400).json({
+        success: false,
+        message: "Lý do báo cáo không hợp lệ",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(targetId)) {
+      return res.status(400).json({
+        success: false,
+        message: "ID đối tượng báo cáo không hợp lệ",
+      });
+    }
+
+    if (targetType === "Post") {
+      const post = await Post.findById(targetId).select("userId status");
+      if (!post || post.status === "deleted") {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy bài viết cần báo cáo",
+        });
+      }
+
+      if (post.userId?.toString() === req.user.id) {
+        return res.status(400).json({
+          success: false,
+          message: "Bạn không thể báo cáo bài viết của chính mình",
+        });
+      }
+    }
+
+    if (targetType === "User") {
+      const targetUser = await User.findById(targetId).select("_id");
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          message: "Không tìm thấy người dùng cần báo cáo",
+        });
+      }
+    }
+
+    const existingOpenReport = await Report.findOne({
+      reporterId: req.user.id,
+      targetType,
+      targetId,
+      status: { $in: ["pending", "reviewing"] },
+    }).select("_id");
+
+    if (existingOpenReport) {
+      return res.status(409).json({
+        success: false,
+        message: "Bạn đã gửi báo cáo cho nội dung này và đang chờ xử lý",
+      });
+    }
+
     const report = new Report({
       reporterId: req.user.id,
       targetType,
       targetId,
       reason,
-      description,
+      description: typeof description === "string" ? description.trim() : "",
     });
 
     await report.save();
-    return res
-      .status(201)
-      .json({
-        success: true,
-        message: "Đã gửi báo cáo thành công",
-        data: report,
-      });
+    return res.status(201).json({
+      success: true,
+      message: "Đã gửi báo cáo thành công",
+      data: report,
+    });
   } catch (error) {
     console.error("Lỗi submitReport:", error);
     return res.status(500).json({ success: false, message: "Lỗi server" });
