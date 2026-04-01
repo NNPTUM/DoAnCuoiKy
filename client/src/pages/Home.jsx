@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
 import moment from "moment";
@@ -12,6 +18,17 @@ const formatAlgorithmLabel = (algorithm) => {
   if (algorithm === "hybrid") return "Hybrid";
   return "Chronological";
 };
+
+const FEED_PAGE_SIZE = 5;
+const REPORT_REASON_OPTIONS = [
+  { value: "spam", label: "Spam / quảng cáo" },
+  { value: "hate_speech", label: "Ngôn từ thù ghét" },
+  { value: "nudity", label: "Nội dung nhạy cảm / khỏa thân" },
+  { value: "violence", label: "Bạo lực" },
+  { value: "harassment", label: "Quấy rối" },
+  { value: "false_information", label: "Thông tin sai lệch" },
+  { value: "other", label: "Lý do khác" },
+];
 
 const Home = () => {
   const [posts, setPosts] = useState([]);
@@ -28,47 +45,134 @@ const Home = () => {
   const [isUpdatingComment, setIsUpdatingComment] = useState(false);
   const [activeDropdownCommentId, setActiveDropdownCommentId] = useState(null);
   const [feedMeta, setFeedMeta] = useState(null);
+  const [reportedPosts, setReportedPosts] = useState({});
+  const [reportingPostId, setReportingPostId] = useState(null);
+  const [page, setPage] = useState(1);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreRef = useRef(null);
 
   const navigate = useNavigate();
-  const currentUser = JSON.parse(localStorage.getItem("user"));
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  }, []);
   const currentUserId = currentUser?._id || currentUser?.id;
 
   // Kiểm tra đăng nhập khi vào trang
-  useEffect(() => {
-    if (!currentUser) {
-      navigate("/login");
-    } else {
-      fetchPosts();
+  const fetchLikedPosts = useCallback(async () => {
+    const reactionsRes = await API.get("/posts/reactions/my-posts");
+    if (reactionsRes.data.success) {
+      const likedMap = {};
+      reactionsRes.data.data.forEach((postId) => {
+        likedMap[postId] = true;
+      });
+      setLikedPosts(likedMap);
     }
   }, []);
 
-  // Hàm lấy danh sách bài viết từ Backend
-  const fetchPosts = async () => {
-    try {
-      const [postsRes, reactionsRes] = await Promise.all([
-        API.get("/posts"),
-        API.get("/posts/reactions/my-posts"),
-      ]);
+  const fetchPosts = useCallback(
+    async ({ pageToLoad = 1, replace = false } = {}) => {
+      const postsRes = await API.get("/posts", {
+        params: { page: pageToLoad, limit: FEED_PAGE_SIZE },
+      });
 
       if (postsRes.data.success) {
-        setPosts(postsRes.data.data);
-        setFeedMeta(postsRes.data.meta || null);
-      }
+        const incomingPosts = Array.isArray(postsRes.data.data)
+          ? postsRes.data.data
+          : [];
 
-      // Khôi phục trạng thái like từ backend
-      if (reactionsRes.data.success) {
-        const likedMap = {};
-        reactionsRes.data.data.forEach((postId) => {
-          likedMap[postId] = true;
+        setPosts((prevPosts) => {
+          if (replace) {
+            return incomingPosts;
+          }
+
+          const existingIds = new Set(prevPosts.map((post) => post._id));
+          const dedupedIncoming = incomingPosts.filter(
+            (post) => !existingIds.has(post._id),
+          );
+          return [...prevPosts, ...dedupedIncoming];
         });
-        setLikedPosts(likedMap);
+
+        setFeedMeta(postsRes.data.meta || null);
+        setPage(pageToLoad);
+        setHasMorePosts(incomingPosts.length === FEED_PAGE_SIZE);
       }
-    } catch (error) {
-      console.error("Lỗi lấy bài viết:", error);
-    } finally {
-      setLoading(false);
+    },
+    [],
+  );
+
+  const fetchMorePosts = useCallback(async () => {
+    if (loading || loadingMore || !hasMorePosts) {
+      return;
     }
-  };
+
+    setLoadingMore(true);
+    try {
+      await fetchPosts({ pageToLoad: page + 1, replace: false });
+    } catch (error) {
+      console.error("Lỗi tải thêm bài viết:", error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [fetchPosts, hasMorePosts, loading, loadingMore, page]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      navigate("/login");
+      return;
+    }
+
+    const loadInitialFeed = async () => {
+      try {
+        setLoading(true);
+        await Promise.all([
+          fetchPosts({ pageToLoad: 1, replace: true }),
+          fetchLikedPosts(),
+        ]);
+      } catch (error) {
+        console.error("Lỗi lấy bài viết:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInitialFeed();
+  }, [currentUser, fetchLikedPosts, fetchPosts, navigate]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          fetchMorePosts();
+        }
+      },
+      {
+        root: null,
+        rootMargin: "160px 0px",
+        threshold: 0.1,
+      },
+    );
+
+    const sentinel = loadMoreRef.current;
+    if (sentinel) {
+      observer.observe(sentinel);
+    }
+
+    return () => {
+      if (sentinel) {
+        observer.unobserve(sentinel);
+      }
+      observer.disconnect();
+    };
+  }, [fetchMorePosts, loading]);
 
   // Hàm xử lý Đăng bài viết
   const handleCreatePost = async () => {
@@ -353,6 +457,53 @@ const Home = () => {
     }
   };
 
+  const handleReportPost = async (post) => {
+    const optionsText = REPORT_REASON_OPTIONS.map(
+      (item, index) => `${index + 1}. ${item.label}`,
+    ).join("\n");
+
+    const selectedIndexText = window.prompt(
+      `Chọn lý do báo cáo bài viết:\n${optionsText}\nNhập số từ 1 đến ${REPORT_REASON_OPTIONS.length}`,
+      "1",
+    );
+
+    if (selectedIndexText === null) {
+      return;
+    }
+
+    const selectedIndex = Number.parseInt(selectedIndexText, 10);
+    if (
+      !Number.isFinite(selectedIndex) ||
+      selectedIndex < 1 ||
+      selectedIndex > REPORT_REASON_OPTIONS.length
+    ) {
+      alert("Lý do báo cáo không hợp lệ.");
+      return;
+    }
+
+    const selectedReason = REPORT_REASON_OPTIONS[selectedIndex - 1];
+    const description = window.prompt("Mô tả thêm (không bắt buộc):", "");
+
+    setReportingPostId(post._id);
+    try {
+      const res = await API.post("/moderator/reports/submit", {
+        targetType: "Post",
+        targetId: post._id,
+        reason: selectedReason.value,
+        description: description?.trim() || "",
+      });
+
+      if (res.data?.success) {
+        setReportedPosts((prev) => ({ ...prev, [post._id]: true }));
+        alert("Đã gửi báo cáo bài viết thành công.");
+      }
+    } catch (error) {
+      alert(error.response?.data?.message || "Không thể gửi báo cáo lúc này.");
+    } finally {
+      setReportingPostId(null);
+    }
+  };
+
   return (
     <div
       style={{
@@ -522,176 +673,233 @@ const Home = () => {
           {loading ? (
             <p style={{ textAlign: "center" }}>Đang tải bảng tin...</p>
           ) : (
-            posts.map((post) => {
-              const postOwnerId =
-                typeof post.userId === "object"
-                  ? post.userId?._id
-                  : post.userId;
-              const isMyPost = currentUserId && postOwnerId === currentUserId;
-              const isEditing = editingPostId === post._id;
+            <>
+              {posts.length === 0 && (
+                <p style={{ textAlign: "center" }}>Chưa có bài viết nào.</p>
+              )}
 
-              return (
-                <article key={post._id} style={styles.postArticle}>
-                  <div style={{ padding: "20px 20px 12px" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "12px",
-                      }}
-                    >
+              {posts.map((post) => {
+                const postOwnerId =
+                  typeof post.userId === "object"
+                    ? post.userId?._id
+                    : post.userId;
+                const isMyPost = currentUserId && postOwnerId === currentUserId;
+                const isEditing = editingPostId === post._id;
+
+                return (
+                  <article key={post._id} style={styles.postArticle}>
+                    <div style={{ padding: "20px 20px 12px" }}>
                       <div
                         style={{
                           display: "flex",
-                          gap: "10px",
+                          justifyContent: "space-between",
                           alignItems: "center",
+                          marginBottom: "12px",
                         }}
                       >
-                        <UserHoverCard user={post.userId}>
-                          <img
-                            src={post.userId?.avatarUrl}
-                            alt="Avatar"
-                            style={{ ...styles.avatarSmall, cursor: "pointer" }}
-                          />
-                        </UserHoverCard>
-                        <div>
-                          <UserHoverCard user={post.userId}>
-                            <p
-                              style={{
-                                fontWeight: 700,
-                                fontSize: "14px",
-                                margin: 0,
-                                cursor: "pointer",
-                              }}
-                            >
-                              {post.userId?.username}
-                            </p>
-                          </UserHoverCard>
-                          <p
-                            style={{
-                              fontSize: "12px",
-                              color: "#6c759e",
-                              margin: 0,
-                            }}
-                          >
-                            {moment(post.createdAt).fromNow()}
-                          </p>
-                        </div>
-                      </div>
-                      {isMyPost && !isEditing && (
-                        <div style={styles.ownerActionWrap}>
-                          <button
-                            type="button"
-                            style={styles.editBtn}
-                            onClick={() => startEditingPost(post)}
-                          >
-                            Sửa
-                          </button>
-                          <button
-                            type="button"
-                            style={styles.deleteBtn}
-                            onClick={() => handleDeletePost(post._id)}
-                          >
-                            Xóa
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    {isEditing ? (
-                      <div style={styles.editBox}>
-                        <textarea
-                          value={editingContent}
-                          onChange={(e) => setEditingContent(e.target.value)}
-                          rows={3}
-                          style={styles.editTextarea}
-                        />
-                        <div style={styles.editActions}>
-                          <button
-                            type="button"
-                            style={styles.cancelBtn}
-                            onClick={cancelEditingPost}
-                            disabled={isUpdating}
-                          >
-                            Hủy
-                          </button>
-                          <button
-                            type="button"
-                            style={styles.saveBtn}
-                            onClick={() => handleUpdatePost(post._id)}
-                            disabled={isUpdating || !editingContent.trim()}
-                          >
-                            {isUpdating ? "Đang lưu..." : "Lưu"}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p style={styles.postContent}>{post.content}</p>
-                    )}
-                  </div>
-                  {post.mediaIds && post.mediaIds.length > 0 && (
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          post.mediaIds.length === 1 ? "1fr" : "1fr 1fr",
-                        gap: "2px",
-                        borderRadius: "14px",
-                        overflow: "hidden",
-                        marginTop: "12px",
-                      }}
-                    >
-                      {post.mediaIds.map((media, index) => (
-                        <img
-                          key={media._id || index}
-                          src={media.url}
-                          alt="Post"
+                        <div
                           style={{
-                            width: "100%",
-                            height: "100%",
-                            maxHeight:
-                              post.mediaIds.length === 1 ? "400px" : "250px",
-                            objectFit: "cover",
-                          }}
-                        />
-                      ))}
-                    </div>
-                  )}
-                  <div style={styles.postActions}>
-                    <div style={{ display: "flex", gap: "20px" }}>
-                      <button
-                        onClick={() => handleLike(post._id)}
-                        style={{
-                          ...styles.actionBtn,
-                          color: likedPosts[post._id] ? "#e74c3c" : "#6c759e",
-                        }}
-                      >
-                        <span
-                          className="material-symbols-outlined"
-                          style={{
-                            fontVariationSettings: likedPosts[post._id]
-                              ? "'FILL' 1"
-                              : "'FILL' 0",
+                            display: "flex",
+                            gap: "10px",
+                            alignItems: "center",
                           }}
                         >
-                          favorite
-                        </span>{" "}
-                        {post.reactionCount || 0}
-                      </button>
-                      <button
-                        onClick={() => openCommentModal(post._id)}
-                        style={styles.actionBtn}
-                      >
-                        <span className="material-symbols-outlined">
-                          chat_bubble
-                        </span>{" "}
-                        {post.commentCount || 0}
-                      </button>
+                          <UserHoverCard user={post.userId}>
+                            <img
+                              src={post.userId?.avatarUrl}
+                              alt="Avatar"
+                              style={{
+                                ...styles.avatarSmall,
+                                cursor: "pointer",
+                              }}
+                            />
+                          </UserHoverCard>
+                          <div>
+                            <UserHoverCard user={post.userId}>
+                              <p
+                                style={{
+                                  fontWeight: 700,
+                                  fontSize: "14px",
+                                  margin: 0,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {post.userId?.username}
+                              </p>
+                            </UserHoverCard>
+                            <p
+                              style={{
+                                fontSize: "12px",
+                                color: "#6c759e",
+                                margin: 0,
+                              }}
+                            >
+                              {moment(post.createdAt).fromNow()}
+                            </p>
+                          </div>
+                        </div>
+                        {isMyPost && !isEditing && (
+                          <div style={styles.ownerActionWrap}>
+                            <button
+                              type="button"
+                              style={styles.editBtn}
+                              onClick={() => startEditingPost(post)}
+                            >
+                              Sửa
+                            </button>
+                            <button
+                              type="button"
+                              style={styles.deleteBtn}
+                              onClick={() => handleDeletePost(post._id)}
+                            >
+                              Xóa
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {isEditing ? (
+                        <div style={styles.editBox}>
+                          <textarea
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            rows={3}
+                            style={styles.editTextarea}
+                          />
+                          <div style={styles.editActions}>
+                            <button
+                              type="button"
+                              style={styles.cancelBtn}
+                              onClick={cancelEditingPost}
+                              disabled={isUpdating}
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              type="button"
+                              style={styles.saveBtn}
+                              onClick={() => handleUpdatePost(post._id)}
+                              disabled={isUpdating || !editingContent.trim()}
+                            >
+                              {isUpdating ? "Đang lưu..." : "Lưu"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p style={styles.postContent}>{post.content}</p>
+                      )}
                     </div>
-                  </div>
-                </article>
-              );
-            })
+                    {post.mediaIds && post.mediaIds.length > 0 && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            post.mediaIds.length === 1 ? "1fr" : "1fr 1fr",
+                          gap: "2px",
+                          borderRadius: "14px",
+                          overflow: "hidden",
+                          marginTop: "12px",
+                        }}
+                      >
+                        {post.mediaIds.map((media, index) => (
+                          <img
+                            key={media._id || index}
+                            src={media.url}
+                            alt="Post"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              maxHeight:
+                                post.mediaIds.length === 1 ? "400px" : "250px",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <div style={styles.postActions}>
+                      <div style={{ display: "flex", gap: "20px" }}>
+                        <button
+                          onClick={() => handleLike(post._id)}
+                          style={{
+                            ...styles.actionBtn,
+                            color: likedPosts[post._id] ? "#e74c3c" : "#6c759e",
+                          }}
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            style={{
+                              fontVariationSettings: likedPosts[post._id]
+                                ? "'FILL' 1"
+                                : "'FILL' 0",
+                            }}
+                          >
+                            favorite
+                          </span>{" "}
+                          {post.reactionCount || 0}
+                        </button>
+                        <button
+                          onClick={() => openCommentModal(post._id)}
+                          style={styles.actionBtn}
+                        >
+                          <span className="material-symbols-outlined">
+                            chat_bubble
+                          </span>{" "}
+                          {post.commentCount || 0}
+                        </button>
+                        {!isMyPost && (
+                          <button
+                            onClick={() => handleReportPost(post)}
+                            disabled={
+                              reportingPostId === post._id ||
+                              reportedPosts[post._id]
+                            }
+                            style={{
+                              ...styles.actionBtn,
+                              color: reportedPosts[post._id]
+                                ? "#d97706"
+                                : "#6c759e",
+                              opacity:
+                                reportingPostId === post._id ||
+                                reportedPosts[post._id]
+                                  ? 0.65
+                                  : 1,
+                              cursor:
+                                reportingPostId === post._id ||
+                                reportedPosts[post._id]
+                                  ? "not-allowed"
+                                  : "pointer",
+                            }}
+                          >
+                            <span className="material-symbols-outlined">
+                              flag
+                            </span>{" "}
+                            {reportingPostId === post._id
+                              ? "Đang gửi..."
+                              : reportedPosts[post._id]
+                                ? "Đã báo cáo"
+                                : "Báo cáo"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+
+              <div ref={loadMoreRef} style={{ height: 1 }} />
+
+              {loadingMore && (
+                <p style={{ textAlign: "center", color: "#6c759e" }}>
+                  Đang tải thêm bài viết...
+                </p>
+              )}
+
+              {!hasMorePosts && posts.length > 0 && (
+                <p style={{ textAlign: "center", color: "#6c759e" }}>
+                  Bạn đã xem hết bài viết.
+                </p>
+              )}
+            </>
           )}
         </main>
 

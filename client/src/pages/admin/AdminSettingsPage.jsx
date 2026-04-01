@@ -4,8 +4,6 @@ import "../dashboard.css";
 
 const initialSettings = {
   features: {
-    isLivestreamEnabled: true,
-    isStoryEnabled: true,
     isImageCommentEnabled: true,
     isRegistrationEnabled: true,
   },
@@ -20,8 +18,6 @@ const initialSettings = {
 
 const normalizeSettings = (data = {}) => ({
   features: {
-    isLivestreamEnabled: Boolean(data.features?.isLivestreamEnabled),
-    isStoryEnabled: Boolean(data.features?.isStoryEnabled),
     isImageCommentEnabled: Boolean(data.features?.isImageCommentEnabled),
     isRegistrationEnabled: Boolean(data.features?.isRegistrationEnabled),
   },
@@ -109,8 +105,6 @@ const AdminSettingsPage = () => {
         <>
           <div className="setting-list">
             {[
-              ["isLivestreamEnabled", "Cho phép livestream"],
-              ["isStoryEnabled", "Bật hệ thống story"],
               ["isImageCommentEnabled", "Comment bằng hình ảnh"],
               ["isRegistrationEnabled", "Cho phép đăng ký tài khoản"],
             ].map(([key, label]) => (

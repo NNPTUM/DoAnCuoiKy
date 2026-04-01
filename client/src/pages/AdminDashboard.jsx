@@ -5,8 +5,6 @@ import "./dashboard.css";
 
 const initialSettings = {
   features: {
-    isLivestreamEnabled: true,
-    isStoryEnabled: true,
     isImageCommentEnabled: true,
     isRegistrationEnabled: true,
   },
@@ -192,8 +190,6 @@ const AdminDashboard = () => {
 
             <div className="setting-list">
               {[
-                ["isLivestreamEnabled", "Cho phép livestream"],
-                ["isStoryEnabled", "Bật hệ thống story"],
                 ["isImageCommentEnabled", "Comment bằng hình ảnh"],
                 ["isRegistrationEnabled", "Cho phép đăng ký tài khoản"],
               ].map(([key, label]) => (

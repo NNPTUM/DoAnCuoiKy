@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import API from "../api/axios";
 
@@ -11,7 +11,26 @@ const Register = () => {
   });
 
   const [isHovered, setIsHovered] = useState(false);
+  const [isRegistrationEnabled, setIsRegistrationEnabled] = useState(true);
+  const [isCheckingRegistration, setIsCheckingRegistration] = useState(true);
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchRegistrationStatus = async () => {
+      try {
+        setIsCheckingRegistration(true);
+        const response = await API.get("/auth/registration-status");
+        const enabled = response.data?.data?.isRegistrationEnabled;
+        setIsRegistrationEnabled(enabled !== false);
+      } catch {
+        setIsRegistrationEnabled(true);
+      } finally {
+        setIsCheckingRegistration(false);
+      }
+    };
+
+    fetchRegistrationStatus();
+  }, []);
 
   const handleChange = (e) => {
     setFormData({
@@ -22,6 +41,12 @@ const Register = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    if (!isRegistrationEnabled) {
+      alert("Đăng ký tài khoản hiện đang bị tắt bởi quản trị viên.");
+      return;
+    }
+
     if (formData.password !== formData.confirmPassword) {
       alert("Mật khẩu xác nhận không khớp!");
       return;
@@ -185,12 +210,33 @@ const Register = () => {
             style={{
               ...styles.button,
               ...(isHovered ? styles.buttonHover : {}),
+              ...(isCheckingRegistration || !isRegistrationEnabled
+                ? styles.buttonDisabled
+                : {}),
             }}
+            disabled={isCheckingRegistration || !isRegistrationEnabled}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
           >
-            Đăng ký
+            {isCheckingRegistration
+              ? "Đang kiểm tra..."
+              : isRegistrationEnabled
+                ? "Đăng ký"
+                : "Đăng ký đang tắt"}
           </button>
+
+          {!isRegistrationEnabled && !isCheckingRegistration && (
+            <p
+              style={{
+                ...styles.subtitle,
+                marginTop: "12px",
+                textAlign: "center",
+                color: "#c62828",
+              }}
+            >
+              Quản trị viên đang tạm tắt tính năng đăng ký tài khoản.
+            </p>
+          )}
 
           <p
             style={{
@@ -319,6 +365,10 @@ const styles = {
   },
   buttonHover: {
     backgroundColor: "#2455d3",
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+    cursor: "not-allowed",
   },
 };
 
