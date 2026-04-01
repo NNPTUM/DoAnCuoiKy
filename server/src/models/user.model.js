@@ -40,6 +40,17 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: true, // Dùng để khóa tài khoản (ban user) thay vì xóa hẳn khỏi DB
     },
+    // Trạng thái tài khoản chi tiết hơn cho Moderator
+    status: {
+      type: String,
+      enum: ["active", "warned", "banned"],
+      default: "active",
+    },
+    // Chứa số lần bị cảnh báo
+    warningCount: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true },
 );

@@ -14,3 +14,5 @@ require("./role.model");
 require("./token.model");
 require("./user.model");
 require("./user_setting.model");
+require("./system_setting.model");
+require("./report.model");

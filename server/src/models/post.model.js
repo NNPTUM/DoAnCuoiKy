@@ -36,6 +36,25 @@ const postSchema = new mongoose.Schema(
     // Lưu sẵn số lượng để Frontend hiển thị nhanh mà không cần đếm lại toàn bộ bảng Comment/Reaction
     commentCount: { type: Number, default: 0 },
     reactionCount: { type: Number, default: 0 },
+
+    // Dành cho Moderator: Ghim bài viết quan trọng
+    isPinned: {
+      type: Boolean,
+      default: false,
+    },
+    // Dành cho Moderator: Phân loại nội dung
+    tags: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+    // Trạng thái bài viết để kiểm duyệt
+    status: {
+      type: String,
+      enum: ["active", "hidden", "deleted"],
+      default: "active",
+    },
   },
   { timestamps: true },
 );
