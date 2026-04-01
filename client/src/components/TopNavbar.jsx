@@ -2,10 +2,28 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "../context/SocketContext";
 import API from "../api/axios";
-const TopNavbar = () => {
+
+const getStoredUser = () => {
+  try {
+    const rawUser = localStorage.getItem("user");
+    return rawUser ? JSON.parse(rawUser) : null;
+  } catch (error) {
+    return null;
+  }
+};
+
+const TopNavbar = ({
+  homePath = "/",
+  profilePath = "/profile",
+  notificationsPath = "/friends",
+  showSearch = true,
+  showNotifications = true,
+  brandLabel = "Social Web",
+}) => {
   const navigate = useNavigate();
-  const { pendingCount } = useSocket();
-  const currentUser = JSON.parse(localStorage.getItem("user"));
+  const socketState = useSocket();
+  const pendingCount = socketState?.pendingCount || 0;
+  const currentUser = getStoredUser();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState([]);
@@ -13,6 +31,12 @@ const TopNavbar = () => {
   const searchRef = useRef(null);
 
   useEffect(() => {
+    if (!showSearch) {
+      setSearchResults([]);
+      setShowResults(false);
+      return undefined;
+    }
+
     const delayDebounceFn = setTimeout(async () => {
       if (searchTerm.trim() !== "") {
         try {
@@ -31,7 +55,7 @@ const TopNavbar = () => {
     }, 500);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchTerm]);
+  }, [searchTerm, showSearch]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -46,65 +70,127 @@ const TopNavbar = () => {
   return (
     <nav style={styles.navbar}>
       <div style={{ display: "flex", alignItems: "center", gap: "24px" }}>
-        <span onClick={() => navigate("/")} style={{...styles.logo, cursor: "pointer"}}>Social Web</span>
-        <div style={{ ...styles.searchBar, position: "relative" }} ref={searchRef}>
-          <span className="material-symbols-outlined" style={{ color: "#6c759e" }}>search</span>
-          <input 
-            type="text" 
-            placeholder="Tìm kiếm cộng đồng..." 
-            style={styles.searchInput}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            onFocus={() => { if (searchTerm) setShowResults(true) }}
-          />
+        <span
+          onClick={() => navigate(homePath)}
+          style={{ ...styles.logo, cursor: "pointer" }}
+        >
+          {brandLabel}
+        </span>
 
-          {showResults && (
-            <div style={styles.dropdown}>
-              {searchResults.length > 0 ? (
-                searchResults.map(user => (
-                  <div 
-                    key={user._id} 
-                    style={styles.dropdownItem}
-                    onClick={() => {
-                      setShowResults(false);
-                      setSearchTerm("");
-                      navigate(`/profile/${user._id}`);
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#f0f2f5"}
-                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
-                    <img 
-                      src={user.avatarUrl || `https://ui-avatars.com/api/?name=${user.username}`} 
-                      alt={user.username} 
-                      style={styles.dropdownAvatar} 
-                    />
-                    <span style={{ fontSize: "14px", fontWeight: "600", color: "#0f1419" }}>{user.username}</span>
-                  </div>
-                ))
-              ) : (
-                <div style={styles.dropdownEmpty}>Không tìm thấy kết quả</div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-        <div style={{ position: "relative", cursor: "pointer", display: "flex", alignItems: "center" }} onClick={() => navigate("/friends")}>
-          <span className="material-symbols-outlined" style={{ fontSize: "28px", color: "#6c759e" }}>notifications</span>
-          {pendingCount > 0 && (
-            <span style={{
-              position: "absolute", top: "-5px", right: "-5px", backgroundColor: "#e74c3c", color: "white",
-              borderRadius: "50%", padding: "2px 6px", fontSize: "10px", fontWeight: "bold"
-            }}>
-              {pendingCount}
+        {showSearch && (
+          <div
+            style={{ ...styles.searchBar, position: "relative" }}
+            ref={searchRef}
+          >
+            <span
+              className="material-symbols-outlined"
+              style={{ color: "#6c759e" }}
+            >
+              search
             </span>
-          )}
-        </div>
+            <input
+              type="text"
+              placeholder="Tìm kiếm cộng đồng..."
+              style={styles.searchInput}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onFocus={() => {
+                if (searchTerm) setShowResults(true);
+              }}
+            />
+
+            {showResults && (
+              <div style={styles.dropdown}>
+                {searchResults.length > 0 ? (
+                  searchResults.map((user) => (
+                    <div
+                      key={user._id}
+                      style={styles.dropdownItem}
+                      onClick={() => {
+                        setShowResults(false);
+                        setSearchTerm("");
+                        navigate(`/profile/${user._id}`);
+                      }}
+                      onMouseEnter={(e) =>
+                        (e.currentTarget.style.backgroundColor = "#f0f2f5")
+                      }
+                      onMouseLeave={(e) =>
+                        (e.currentTarget.style.backgroundColor = "transparent")
+                      }
+                    >
+                      <img
+                        src={
+                          user.avatarUrl ||
+                          `https://ui-avatars.com/api/?name=${user.username}`
+                        }
+                        alt={user.username}
+                        style={styles.dropdownAvatar}
+                      />
+                      <span
+                        style={{
+                          fontSize: "14px",
+                          fontWeight: "600",
+                          color: "#0f1419",
+                        }}
+                      >
+                        {user.username}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div style={styles.dropdownEmpty}>Không tìm thấy kết quả</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+        {showNotifications && (
+          <div
+            style={{
+              position: "relative",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+            }}
+            onClick={() => navigate(notificationsPath)}
+          >
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: "28px", color: "#6c759e" }}
+            >
+              notifications
+            </span>
+            {pendingCount > 0 && (
+              <span
+                style={{
+                  position: "absolute",
+                  top: "-5px",
+                  right: "-5px",
+                  backgroundColor: "#e74c3c",
+                  color: "white",
+                  borderRadius: "50%",
+                  padding: "2px 6px",
+                  fontSize: "10px",
+                  fontWeight: "bold",
+                }}
+              >
+                {pendingCount}
+              </span>
+            )}
+          </div>
+        )}
+
         <img
-          src={currentUser?.avatarUrl || `https://ui-avatars.com/api/?name=${currentUser?.username}`}
+          src={
+            currentUser?.avatarUrl ||
+            `https://ui-avatars.com/api/?name=${currentUser?.username || "User"}`
+          }
           alt="Profile"
           style={{ ...styles.navAvatar, cursor: "pointer" }}
-          onClick={() => navigate("/profile")}
+          onClick={() => navigate(profilePath)}
         />
         <button
           onClick={() => {
@@ -124,7 +210,9 @@ const styles = {
   navbar: {
     position: "fixed",
     top: 0,
-    width: "100%",
+    left: 0,
+    right: 0,
+    width: "auto",
     zIndex: 50,
     backgroundColor: "rgba(255,255,255,0.9)",
     backdropFilter: "blur(10px)",
