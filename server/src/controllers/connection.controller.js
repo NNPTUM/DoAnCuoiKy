@@ -3,24 +3,33 @@ const FriendRequest = require("../models/friend_request.model");
 const Friendship = require("../models/friendship.model");
 const Block = require("../models/block.model");
 const UserSetting = require("../models/user_setting.model");
+const SystemSetting = require("../models/system_setting.model");
 const { getIo, getUser } = require("../socket/socket");
 
 // Hàm helper gửi thông báo real-time khi có lời mời kết bạn mới
-const sendFriendRequestNotification = async (senderId, receiverId, requestData) => {
+const sendFriendRequestNotification = async (
+  senderId,
+  receiverId,
+  requestData,
+) => {
   try {
     const receiverSetting = await UserSetting.findOne({ userId: receiverId });
-    if (!receiverSetting || receiverSetting.notifications.friendRequest !== false) {
+    if (
+      !receiverSetting ||
+      receiverSetting.notifications.friendRequest !== false
+    ) {
       const io = getIo();
       const socketUser = getUser(receiverId);
       if (io && socketUser) {
         // Lấy thông tin sender để hiển thị tên
         const User = require("../models/user.model");
-        const sender = await User.findById(senderId).select("username avatarUrl");
-        
+        const sender =
+          await User.findById(senderId).select("username avatarUrl");
+
         io.to(socketUser.socketId).emit("newNotification", {
           type: "friendRequest",
-          message: `${sender?.username || 'Ai đó'} đã gửi cho bạn một lời mời kết bạn!`,
-          data: requestData
+          message: `${sender?.username || "Ai đó"} đã gửi cho bạn một lời mời kết bạn!`,
+          data: requestData,
         });
         io.to(socketUser.socketId).emit("pendingFriendRequestCount");
       }
@@ -91,7 +100,11 @@ exports.sendFriendRequest = async (req, res) => {
         // Đã hủy kết bạn → reset FriendRequest và cho phép gửi lại
         existingRequest.status = "pending";
         await existingRequest.save();
-        await sendFriendRequestNotification(senderId, receiverId, existingRequest);
+        await sendFriendRequestNotification(
+          senderId,
+          receiverId,
+          existingRequest,
+        );
         return res.status(200).json({
           success: true,
           message: "Đã gửi lời mời kết bạn",
@@ -101,7 +114,11 @@ exports.sendFriendRequest = async (req, res) => {
       // Status là 'declined' → cho phép gửi lại bằng cách reset
       existingRequest.status = "pending";
       await existingRequest.save();
-      await sendFriendRequestNotification(senderId, receiverId, existingRequest);
+      await sendFriendRequestNotification(
+        senderId,
+        receiverId,
+        existingRequest,
+      );
       return res.status(200).json({
         success: true,
         message: "Đã gửi lại lời mời kết bạn",
@@ -403,6 +420,17 @@ exports.getSuggestions = async (req, res) => {
     const userId = req.user.id;
     const User = require("../models/user.model");
 
+    const settings = await SystemSetting.findOne()
+      .select("algorithms.friendSuggestionLimit")
+      .lean();
+    const configuredLimit = Number.parseInt(
+      settings?.algorithms?.friendSuggestionLimit,
+      10,
+    );
+    const suggestionLimit = Number.isFinite(configuredLimit)
+      ? Math.max(1, configuredLimit)
+      : 10;
+
     // Lấy danh sách bạn bè
     const friendships = await Friendship.find({ users: userId });
     const friendIds = friendships.flatMap((f) =>
@@ -435,7 +463,7 @@ exports.getSuggestions = async (req, res) => {
 
     const suggestions = await User.find({ _id: { $nin: excludeIds } })
       .select("username avatarUrl")
-      .limit(10);
+      .limit(suggestionLimit);
 
     res.status(200).json({ success: true, data: suggestions });
   } catch (error) {

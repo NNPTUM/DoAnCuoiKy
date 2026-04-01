@@ -1,12 +1,100 @@
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import API from "../api/axios";
 
 const LeftSidebar = ({ style }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const currentUser = JSON.parse(localStorage.getItem("user"));
+  const [currentUser, setCurrentUser] = useState(
+    JSON.parse(localStorage.getItem("user") || "{}"),
+  );
 
   const activeTab = location.pathname;
+
+  useEffect(() => {
+    const resolveRole = async () => {
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const hasRoleName =
+        currentUser?.roleName ||
+        currentUser?.role?.name ||
+        currentUser?.roleId?.name ||
+        typeof currentUser?.role === "string";
+
+      if (hasRoleName) return;
+
+      try {
+        const res = await API.get("/auth/me");
+        if (res.data?.success && res.data?.data) {
+          const me = res.data.data;
+          const roleName =
+            me?.roleName ||
+            me?.role?.name ||
+            me?.roleId?.name ||
+            me?.role ||
+            "user";
+
+          const syncedUser = {
+            ...me,
+            id: me._id,
+            roleName,
+            role: roleName,
+          };
+
+          localStorage.setItem("user", JSON.stringify(syncedUser));
+          setCurrentUser(syncedUser);
+        }
+      } catch (error) {
+        console.error("Không thể đồng bộ role cho sidebar", error);
+      }
+    };
+
+    resolveRole();
+  }, [currentUser]);
+
+  const normalizedRole = useMemo(() => {
+    return (
+      currentUser?.roleName ||
+      currentUser?.role?.name ||
+      currentUser?.roleId?.name ||
+      currentUser?.role ||
+      "user"
+    )
+      .toString()
+      .toLowerCase();
+  }, [currentUser]);
+
+  const menuItems = useMemo(() => {
+    const baseItems = [
+      { icon: "home", label: "Trang chủ", path: "/" },
+      { icon: "group", label: "Bạn bè", path: "/friends" },
+      { icon: "person", label: "Hồ sơ", path: "/profile" },
+      { icon: "message", label: "Tin nhắn", path: "/messages" },
+      { icon: "settings", label: "Cài đặt", path: "/settings" },
+    ];
+
+    if (normalizedRole === "admin") {
+      return [
+        ...baseItems,
+        {
+          icon: "admin_panel_settings",
+          label: "Admin Dashboard",
+          path: "/admin",
+        },
+        { icon: "gavel", label: "Moderator Hub", path: "/moderator" },
+      ];
+    }
+
+    if (normalizedRole === "moderator") {
+      return [
+        ...baseItems,
+        { icon: "gavel", label: "Moderator Hub", path: "/moderator" },
+      ];
+    }
+
+    return baseItems;
+  }, [normalizedRole]);
 
   return (
     <aside style={{ ...styles.leftSidebar, ...style }}>
@@ -34,13 +122,7 @@ const LeftSidebar = ({ style }) => {
         </div>
       </div>
       <nav style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-        {[
-          { icon: "home", label: "Trang chủ", path: "/" },
-          { icon: "group", label: "Bạn bè", path: "/friends" },
-          { icon: "person", label: "Hồ sơ", path: "/profile" },
-          { icon: "message", label: "Tin nhắn", path: "/messages" },
-          { icon: "settings", label: "Cài đặt", path: "/settings" },
-        ].map((item) => {
+        {menuItems.map((item) => {
           const isActive =
             activeTab === item.path ||
             (item.path !== "/" && activeTab.startsWith(item.path));

@@ -1,4 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
 import moment from "moment";
@@ -6,6 +12,23 @@ import UserHoverCard from "../components/UserHoverCard";
 import LeftSidebar from "../components/LeftSidebar";
 import TopNavbar from "../components/TopNavbar";
 import { useSocket } from "../context/SocketContext";
+
+const formatAlgorithmLabel = (algorithm) => {
+  if (algorithm === "engagement") return "Engagement";
+  if (algorithm === "hybrid") return "Hybrid";
+  return "Chronological";
+};
+
+const FEED_PAGE_SIZE = 5;
+const REPORT_REASON_OPTIONS = [
+  { value: "spam", label: "Spam / quảng cáo" },
+  { value: "hate_speech", label: "Ngôn từ thù ghét" },
+  { value: "nudity", label: "Nội dung nhạy cảm / khỏa thân" },
+  { value: "violence", label: "Bạo lực" },
+  { value: "harassment", label: "Quấy rối" },
+  { value: "false_information", label: "Thông tin sai lệch" },
+  { value: "other", label: "Lý do khác" },
+];
 
 const Home = () => {
   const [posts, setPosts] = useState([]);
@@ -21,48 +44,135 @@ const Home = () => {
   const [editingCommentContent, setEditingCommentContent] = useState("");
   const [isUpdatingComment, setIsUpdatingComment] = useState(false);
   const [activeDropdownCommentId, setActiveDropdownCommentId] = useState(null);
+  const [feedMeta, setFeedMeta] = useState(null);
+  const [reportedPosts, setReportedPosts] = useState({});
+  const [reportingPostId, setReportingPostId] = useState(null);
+  const [page, setPage] = useState(1);
+  const [hasMorePosts, setHasMorePosts] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreRef = useRef(null);
 
   const navigate = useNavigate();
-  const currentUser = JSON.parse(localStorage.getItem("user"));
+  const currentUser = useMemo(() => {
+    try {
+      return JSON.parse(localStorage.getItem("user"));
+    } catch {
+      return null;
+    }
+  }, []);
   const currentUserId = currentUser?._id || currentUser?.id;
 
   // Kiểm tra đăng nhập khi vào trang
-  useEffect(() => {
-    if (!currentUser) {
-      navigate("/login");
-    } else {
-      fetchPosts();
-      
+  const fetchLikedPosts = useCallback(async () => {
+    const reactionsRes = await API.get("/posts/reactions/my-posts");
+    if (reactionsRes.data.success) {
+      const likedMap = {};
+      reactionsRes.data.data.forEach((postId) => {
+        likedMap[postId] = true;
+      });
+      setLikedPosts(likedMap);
     }
   }, []);
 
-
-  // Hàm lấy danh sách bài viết từ Backend
-  const fetchPosts = async () => {
-    try {
-      const [postsRes, reactionsRes] = await Promise.all([
-        API.get("/posts"),
-        API.get("/posts/reactions/my-posts"),
-      ]);
+  const fetchPosts = useCallback(
+    async ({ pageToLoad = 1, replace = false } = {}) => {
+      const postsRes = await API.get("/posts", {
+        params: { page: pageToLoad, limit: FEED_PAGE_SIZE },
+      });
 
       if (postsRes.data.success) {
-        setPosts(postsRes.data.data);
-      }
+        const incomingPosts = Array.isArray(postsRes.data.data)
+          ? postsRes.data.data
+          : [];
 
-      // Khôi phục trạng thái like từ backend
-      if (reactionsRes.data.success) {
-        const likedMap = {};
-        reactionsRes.data.data.forEach((postId) => {
-          likedMap[postId] = true;
+        setPosts((prevPosts) => {
+          if (replace) {
+            return incomingPosts;
+          }
+
+          const existingIds = new Set(prevPosts.map((post) => post._id));
+          const dedupedIncoming = incomingPosts.filter(
+            (post) => !existingIds.has(post._id),
+          );
+          return [...prevPosts, ...dedupedIncoming];
         });
-        setLikedPosts(likedMap);
+
+        setFeedMeta(postsRes.data.meta || null);
+        setPage(pageToLoad);
+        setHasMorePosts(incomingPosts.length === FEED_PAGE_SIZE);
       }
-    } catch (error) {
-      console.error("Lỗi lấy bài viết:", error);
-    } finally {
-      setLoading(false);
+    },
+    [],
+  );
+
+  const fetchMorePosts = useCallback(async () => {
+    if (loading || loadingMore || !hasMorePosts) {
+      return;
     }
-  };
+
+    setLoadingMore(true);
+    try {
+      await fetchPosts({ pageToLoad: page + 1, replace: false });
+    } catch (error) {
+      console.error("Lỗi tải thêm bài viết:", error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [fetchPosts, hasMorePosts, loading, loadingMore, page]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      navigate("/login");
+      return;
+    }
+
+    const loadInitialFeed = async () => {
+      try {
+        setLoading(true);
+        await Promise.all([
+          fetchPosts({ pageToLoad: 1, replace: true }),
+          fetchLikedPosts(),
+        ]);
+      } catch (error) {
+        console.error("Lỗi lấy bài viết:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadInitialFeed();
+  }, [currentUser, fetchLikedPosts, fetchPosts, navigate]);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          fetchMorePosts();
+        }
+      },
+      {
+        root: null,
+        rootMargin: "160px 0px",
+        threshold: 0.1,
+      },
+    );
+
+    const sentinel = loadMoreRef.current;
+    if (sentinel) {
+      observer.observe(sentinel);
+    }
+
+    return () => {
+      if (sentinel) {
+        observer.unobserve(sentinel);
+      }
+      observer.disconnect();
+    };
+  }, [fetchMorePosts, loading]);
 
   // Hàm xử lý Đăng bài viết
   const handleCreatePost = async () => {
@@ -83,7 +193,7 @@ const Home = () => {
           if (res.data.success) {
             return {
               url: res.data.imageUrl,
-              publicId: res.data.publicId
+              publicId: res.data.publicId,
             };
           }
           throw new Error("Upload ảnh thất bại");
@@ -107,9 +217,15 @@ const Home = () => {
     } catch (error) {
       console.error("=== LỖI ĐĂNG BÀI ===");
       console.error("error.message:", error.message);
-      console.error("error.response?.data:", JSON.stringify(error.response?.data));
+      console.error(
+        "error.response?.data:",
+        JSON.stringify(error.response?.data),
+      );
       console.error("error.response?.status:", error.response?.status);
-      const errMsg = error.response?.data?.message || error.message || "Lỗi. Vui lòng thử lại.";
+      const errMsg =
+        error.response?.data?.message ||
+        error.message ||
+        "Lỗi. Vui lòng thử lại.";
       alert("Đăng bài thất bại: " + errMsg);
     } finally {
       setIsPosting(false);
@@ -124,7 +240,9 @@ const Home = () => {
   };
 
   const handleRemoveImage = (indexToRemove) => {
-    setSelectedImages((prev) => prev.filter((_, index) => index !== indexToRemove));
+    setSelectedImages((prev) =>
+      prev.filter((_, index) => index !== indexToRemove),
+    );
   };
 
   const handleDeletePost = async (postId) => {
@@ -301,7 +419,9 @@ const Home = () => {
         const updatedComment = response.data.data;
         setPostComments((prev) => ({
           ...prev,
-          [postId]: prev[postId].map((c) => (c._id === commentId ? updatedComment : c)),
+          [postId]: prev[postId].map((c) =>
+            c._id === commentId ? updatedComment : c,
+          ),
         }));
         cancelEditingComment();
       }
@@ -315,7 +435,9 @@ const Home = () => {
   const handleDeleteComment = async (postId, commentId) => {
     if (window.confirm("Bạn có chắc chắn muốn xóa bình luận này?")) {
       try {
-        const response = await API.delete(`/posts/${postId}/comments/${commentId}`);
+        const response = await API.delete(
+          `/posts/${postId}/comments/${commentId}`,
+        );
         if (response.data.success) {
           setPostComments((prev) => ({
             ...prev,
@@ -323,13 +445,62 @@ const Home = () => {
           }));
           setPosts((prevPosts) =>
             prevPosts.map((p) =>
-              p._id === postId ? { ...p, commentCount: Math.max(0, p.commentCount - 1) } : p,
+              p._id === postId
+                ? { ...p, commentCount: Math.max(0, p.commentCount - 1) }
+                : p,
             ),
           );
         }
       } catch (error) {
         alert("Xóa bình luận thất bại!");
       }
+    }
+  };
+
+  const handleReportPost = async (post) => {
+    const optionsText = REPORT_REASON_OPTIONS.map(
+      (item, index) => `${index + 1}. ${item.label}`,
+    ).join("\n");
+
+    const selectedIndexText = window.prompt(
+      `Chọn lý do báo cáo bài viết:\n${optionsText}\nNhập số từ 1 đến ${REPORT_REASON_OPTIONS.length}`,
+      "1",
+    );
+
+    if (selectedIndexText === null) {
+      return;
+    }
+
+    const selectedIndex = Number.parseInt(selectedIndexText, 10);
+    if (
+      !Number.isFinite(selectedIndex) ||
+      selectedIndex < 1 ||
+      selectedIndex > REPORT_REASON_OPTIONS.length
+    ) {
+      alert("Lý do báo cáo không hợp lệ.");
+      return;
+    }
+
+    const selectedReason = REPORT_REASON_OPTIONS[selectedIndex - 1];
+    const description = window.prompt("Mô tả thêm (không bắt buộc):", "");
+
+    setReportingPostId(post._id);
+    try {
+      const res = await API.post("/moderator/reports/submit", {
+        targetType: "Post",
+        targetId: post._id,
+        reason: selectedReason.value,
+        description: description?.trim() || "",
+      });
+
+      if (res.data?.success) {
+        setReportedPosts((prev) => ({ ...prev, [post._id]: true }));
+        alert("Đã gửi báo cáo bài viết thành công.");
+      }
+    } catch (error) {
+      alert(error.response?.data?.message || "Không thể gửi báo cáo lúc này.");
+    } finally {
+      setReportingPostId(null);
     }
   };
 
@@ -359,6 +530,20 @@ const Home = () => {
             gap: "20px",
           }}
         >
+          <div style={styles.feedMetaWrap}>
+            <span style={styles.feedBadge}>
+              Algorithm:{" "}
+              {formatAlgorithmLabel(
+                feedMeta?.effectiveAlgorithm || feedMeta?.algorithm,
+              )}
+            </span>
+            {feedMeta?.fallbackApplied && (
+              <span style={styles.feedFallbackText}>
+                Auto fallback to Chronological do du lieu engagement chua du.
+              </span>
+            )}
+          </div>
+
           {/* Create Post Box */}
           <div style={styles.postBox}>
             <div style={{ display: "flex", gap: "12px" }}>
@@ -377,18 +562,44 @@ const Home = () => {
                 />
 
                 {selectedImages.length > 0 && (
-                  <div style={{ display: "flex", gap: "10px", marginTop: "12px", flexWrap: "wrap" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: "10px",
+                      marginTop: "12px",
+                      flexWrap: "wrap",
+                    }}
+                  >
                     {selectedImages.map((file, index) => (
                       <div key={index} style={{ position: "relative" }}>
-                        <img 
-                          src={URL.createObjectURL(file)} 
-                          alt="preview" 
-                          style={{ width: "80px", height: "80px", objectFit: "cover", borderRadius: "8px", border: "1px solid #e5e7eb" }} 
+                        <img
+                          src={URL.createObjectURL(file)}
+                          alt="preview"
+                          style={{
+                            width: "80px",
+                            height: "80px",
+                            objectFit: "cover",
+                            borderRadius: "8px",
+                            border: "1px solid #e5e7eb",
+                          }}
                         />
-                        <button 
+                        <button
                           onClick={() => handleRemoveImage(index)}
                           style={{
-                            position: "absolute", top: "4px", right: "4px", background: "rgba(0,0,0,0.6)", color: "#fff", border: "none", borderRadius: "50%", cursor: "pointer", width: "22px", height: "22px", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "14px"
+                            position: "absolute",
+                            top: "4px",
+                            right: "4px",
+                            background: "rgba(0,0,0,0.6)",
+                            color: "#fff",
+                            border: "none",
+                            borderRadius: "50%",
+                            cursor: "pointer",
+                            width: "22px",
+                            height: "22px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: "14px",
                           }}
                         >
                           ✕
@@ -407,15 +618,24 @@ const Home = () => {
                   }}
                 >
                   <div style={{ display: "flex", gap: "16px" }}>
-                    <label style={{ cursor: "pointer", display: "flex", alignItems: "center" }}>
-                      <span className="material-symbols-outlined" style={{ color: "#1877F2" }}>
+                    <label
+                      style={{
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                      }}
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ color: "#1877F2" }}
+                      >
                         image
                       </span>
-                      <input 
-                        type="file" 
-                        accept="image/*" 
-                        multiple 
-                        style={{ display: "none" }} 
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        style={{ display: "none" }}
                         onChange={handleImageSelect}
                         disabled={isPosting}
                       />
@@ -429,10 +649,17 @@ const Home = () => {
                   </div>
                   <button
                     onClick={handleCreatePost}
-                    disabled={isPosting || (!content.trim() && selectedImages.length === 0)}
+                    disabled={
+                      isPosting ||
+                      (!content.trim() && selectedImages.length === 0)
+                    }
                     style={{
                       ...styles.postBtn,
-                      opacity: isPosting || (!content.trim() && selectedImages.length === 0) ? 0.6 : 1,
+                      opacity:
+                        isPosting ||
+                        (!content.trim() && selectedImages.length === 0)
+                          ? 0.6
+                          : 1,
                     }}
                   >
                     {isPosting ? "Đang đăng..." : "Đăng bài"}
@@ -446,160 +673,233 @@ const Home = () => {
           {loading ? (
             <p style={{ textAlign: "center" }}>Đang tải bảng tin...</p>
           ) : (
-            posts.map((post) => {
-              const postOwnerId =
-                typeof post.userId === "object"
-                  ? post.userId?._id
-                  : post.userId;
-              const isMyPost = currentUserId && postOwnerId === currentUserId;
-              const isEditing = editingPostId === post._id;
+            <>
+              {posts.length === 0 && (
+                <p style={{ textAlign: "center" }}>Chưa có bài viết nào.</p>
+              )}
 
-              return (
-                <article key={post._id} style={styles.postArticle}>
-                  <div style={{ padding: "20px 20px 12px" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        marginBottom: "12px",
-                      }}
-                    >
+              {posts.map((post) => {
+                const postOwnerId =
+                  typeof post.userId === "object"
+                    ? post.userId?._id
+                    : post.userId;
+                const isMyPost = currentUserId && postOwnerId === currentUserId;
+                const isEditing = editingPostId === post._id;
+
+                return (
+                  <article key={post._id} style={styles.postArticle}>
+                    <div style={{ padding: "20px 20px 12px" }}>
                       <div
                         style={{
                           display: "flex",
-                          gap: "10px",
+                          justifyContent: "space-between",
                           alignItems: "center",
+                          marginBottom: "12px",
                         }}
                       >
-                        <UserHoverCard user={post.userId}>
-                          <img
-                            src={post.userId?.avatarUrl}
-                            alt="Avatar"
-                            style={{ ...styles.avatarSmall, cursor: "pointer" }}
-                          />
-                        </UserHoverCard>
-                        <div>
-                          <UserHoverCard user={post.userId}>
-                            <p
-                              style={{
-                                fontWeight: 700,
-                                fontSize: "14px",
-                                margin: 0,
-                                cursor: "pointer",
-                              }}
-                            >
-                              {post.userId?.username}
-                            </p>
-                          </UserHoverCard>
-                          <p
-                            style={{
-                              fontSize: "12px",
-                              color: "#6c759e",
-                              margin: 0,
-                            }}
-                          >
-                            {moment(post.createdAt).fromNow()}
-                          </p>
-                        </div>
-                      </div>
-                      {isMyPost && !isEditing && (
-                        <div style={styles.ownerActionWrap}>
-                          <button
-                            type="button"
-                            style={styles.editBtn}
-                            onClick={() => startEditingPost(post)}
-                          >
-                            Sửa
-                          </button>
-                          <button
-                            type="button"
-                            style={styles.deleteBtn}
-                            onClick={() => handleDeletePost(post._id)}
-                          >
-                            Xóa
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    {isEditing ? (
-                      <div style={styles.editBox}>
-                        <textarea
-                          value={editingContent}
-                          onChange={(e) => setEditingContent(e.target.value)}
-                          rows={3}
-                          style={styles.editTextarea}
-                        />
-                        <div style={styles.editActions}>
-                          <button
-                            type="button"
-                            style={styles.cancelBtn}
-                            onClick={cancelEditingPost}
-                            disabled={isUpdating}
-                          >
-                            Hủy
-                          </button>
-                          <button
-                            type="button"
-                            style={styles.saveBtn}
-                            onClick={() => handleUpdatePost(post._id)}
-                            disabled={isUpdating || !editingContent.trim()}
-                          >
-                            {isUpdating ? "Đang lưu..." : "Lưu"}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p style={styles.postContent}>{post.content}</p>
-                    )}
-                  </div>
-                  {post.mediaIds && post.mediaIds.length > 0 && (
-                    <div style={{ display: "grid", gridTemplateColumns: post.mediaIds.length === 1 ? "1fr" : "1fr 1fr", gap: "2px", borderRadius: "14px", overflow: "hidden", marginTop: "12px" }}>
-                      {post.mediaIds.map((media, index) => (
-                         <img
-                           key={media._id || index}
-                           src={media.url}
-                           alt="Post"
-                           style={{ width: "100%", height: "100%", maxHeight: post.mediaIds.length === 1 ? "400px" : "250px", objectFit: "cover" }}
-                         />
-                      ))}
-                    </div>
-                  )}
-                  <div style={styles.postActions}>
-                    <div style={{ display: "flex", gap: "20px" }}>
-                      <button
-                        onClick={() => handleLike(post._id)}
-                        style={{
-                          ...styles.actionBtn,
-                          color: likedPosts[post._id] ? "#e74c3c" : "#6c759e",
-                        }}
-                      >
-                        <span
-                          className="material-symbols-outlined"
+                        <div
                           style={{
-                            fontVariationSettings: likedPosts[post._id]
-                              ? "'FILL' 1"
-                              : "'FILL' 0",
+                            display: "flex",
+                            gap: "10px",
+                            alignItems: "center",
                           }}
                         >
-                          favorite
-                        </span>{" "}
-                        {post.reactionCount || 0}
-                      </button>
-                      <button
-                        onClick={() => openCommentModal(post._id)}
-                        style={styles.actionBtn}
-                      >
-                        <span className="material-symbols-outlined">
-                          chat_bubble
-                        </span>{" "}
-                        {post.commentCount || 0}
-                      </button>
+                          <UserHoverCard user={post.userId}>
+                            <img
+                              src={post.userId?.avatarUrl}
+                              alt="Avatar"
+                              style={{
+                                ...styles.avatarSmall,
+                                cursor: "pointer",
+                              }}
+                            />
+                          </UserHoverCard>
+                          <div>
+                            <UserHoverCard user={post.userId}>
+                              <p
+                                style={{
+                                  fontWeight: 700,
+                                  fontSize: "14px",
+                                  margin: 0,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {post.userId?.username}
+                              </p>
+                            </UserHoverCard>
+                            <p
+                              style={{
+                                fontSize: "12px",
+                                color: "#6c759e",
+                                margin: 0,
+                              }}
+                            >
+                              {moment(post.createdAt).fromNow()}
+                            </p>
+                          </div>
+                        </div>
+                        {isMyPost && !isEditing && (
+                          <div style={styles.ownerActionWrap}>
+                            <button
+                              type="button"
+                              style={styles.editBtn}
+                              onClick={() => startEditingPost(post)}
+                            >
+                              Sửa
+                            </button>
+                            <button
+                              type="button"
+                              style={styles.deleteBtn}
+                              onClick={() => handleDeletePost(post._id)}
+                            >
+                              Xóa
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {isEditing ? (
+                        <div style={styles.editBox}>
+                          <textarea
+                            value={editingContent}
+                            onChange={(e) => setEditingContent(e.target.value)}
+                            rows={3}
+                            style={styles.editTextarea}
+                          />
+                          <div style={styles.editActions}>
+                            <button
+                              type="button"
+                              style={styles.cancelBtn}
+                              onClick={cancelEditingPost}
+                              disabled={isUpdating}
+                            >
+                              Hủy
+                            </button>
+                            <button
+                              type="button"
+                              style={styles.saveBtn}
+                              onClick={() => handleUpdatePost(post._id)}
+                              disabled={isUpdating || !editingContent.trim()}
+                            >
+                              {isUpdating ? "Đang lưu..." : "Lưu"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p style={styles.postContent}>{post.content}</p>
+                      )}
                     </div>
-                  </div>
-                </article>
-              );
-            })
+                    {post.mediaIds && post.mediaIds.length > 0 && (
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns:
+                            post.mediaIds.length === 1 ? "1fr" : "1fr 1fr",
+                          gap: "2px",
+                          borderRadius: "14px",
+                          overflow: "hidden",
+                          marginTop: "12px",
+                        }}
+                      >
+                        {post.mediaIds.map((media, index) => (
+                          <img
+                            key={media._id || index}
+                            src={media.url}
+                            alt="Post"
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              maxHeight:
+                                post.mediaIds.length === 1 ? "400px" : "250px",
+                              objectFit: "cover",
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    <div style={styles.postActions}>
+                      <div style={{ display: "flex", gap: "20px" }}>
+                        <button
+                          onClick={() => handleLike(post._id)}
+                          style={{
+                            ...styles.actionBtn,
+                            color: likedPosts[post._id] ? "#e74c3c" : "#6c759e",
+                          }}
+                        >
+                          <span
+                            className="material-symbols-outlined"
+                            style={{
+                              fontVariationSettings: likedPosts[post._id]
+                                ? "'FILL' 1"
+                                : "'FILL' 0",
+                            }}
+                          >
+                            favorite
+                          </span>{" "}
+                          {post.reactionCount || 0}
+                        </button>
+                        <button
+                          onClick={() => openCommentModal(post._id)}
+                          style={styles.actionBtn}
+                        >
+                          <span className="material-symbols-outlined">
+                            chat_bubble
+                          </span>{" "}
+                          {post.commentCount || 0}
+                        </button>
+                        {!isMyPost && (
+                          <button
+                            onClick={() => handleReportPost(post)}
+                            disabled={
+                              reportingPostId === post._id ||
+                              reportedPosts[post._id]
+                            }
+                            style={{
+                              ...styles.actionBtn,
+                              color: reportedPosts[post._id]
+                                ? "#d97706"
+                                : "#6c759e",
+                              opacity:
+                                reportingPostId === post._id ||
+                                reportedPosts[post._id]
+                                  ? 0.65
+                                  : 1,
+                              cursor:
+                                reportingPostId === post._id ||
+                                reportedPosts[post._id]
+                                  ? "not-allowed"
+                                  : "pointer",
+                            }}
+                          >
+                            <span className="material-symbols-outlined">
+                              flag
+                            </span>{" "}
+                            {reportingPostId === post._id
+                              ? "Đang gửi..."
+                              : reportedPosts[post._id]
+                                ? "Đã báo cáo"
+                                : "Báo cáo"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+
+              <div ref={loadMoreRef} style={{ height: 1 }} />
+
+              {loadingMore && (
+                <p style={{ textAlign: "center", color: "#6c759e" }}>
+                  Đang tải thêm bài viết...
+                </p>
+              )}
+
+              {!hasMorePosts && posts.length > 0 && (
+                <p style={{ textAlign: "center", color: "#6c759e" }}>
+                  Bạn đã xem hết bài viết.
+                </p>
+              )}
+            </>
           )}
         </main>
 
@@ -619,12 +919,14 @@ const Home = () => {
         <div style={styles.modalOverlay} onClick={closeCommentModal}>
           <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
-              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "bold" }}>Bình luận</h3>
+              <h3 style={{ margin: 0, fontSize: "18px", fontWeight: "bold" }}>
+                Bình luận
+              </h3>
               <button style={styles.closeModalBtn} onClick={closeCommentModal}>
                 <span className="material-symbols-outlined">close</span>
               </button>
             </div>
-            
+
             <div style={styles.modalBody}>
               {postComments[activeCommentPostId]?.length > 0 ? (
                 postComments[activeCommentPostId].map((comment) => (
@@ -635,54 +937,87 @@ const Home = () => {
                       style={styles.avatarMini}
                     />
                     <div style={styles.commentContentBox}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                        }}
+                      >
                         <div style={styles.commentHeader}>
                           <span style={styles.commentUser}>
                             {comment.userId?.username}
                           </span>
                           <span style={styles.commentHandle}>
-                            @{comment.userId?.username?.toLowerCase().replace(/\s/g, "")}
+                            @
+                            {comment.userId?.username
+                              ?.toLowerCase()
+                              .replace(/\s/g, "")}
                           </span>
-                          <span style={{ color: "#536471", margin: "0 4px" }}>·</span>
+                          <span style={{ color: "#536471", margin: "0 4px" }}>
+                            ·
+                          </span>
                           <span style={styles.commentTime}>
                             {moment(comment.createdAt).fromNow(true)}
                           </span>
                         </div>
-                        
-                        {currentUserId && currentUserId === (comment.userId?._id || comment.userId) && (
-                          <div style={{ position: "relative" }}>
-                            <button
-                              onClick={() =>
-                                setActiveDropdownCommentId(
-                                  activeDropdownCommentId === comment._id ? null : comment._id
-                                )
-                              }
-                              style={styles.commentMenuBtn}
-                            >
-                              <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>more_horiz</span>
-                            </button>
-                            {activeDropdownCommentId === comment._id && (
-                              <div style={styles.commentDropdown}>
-                                <button onClick={() => startEditingComment(comment)} style={styles.dropdownItem}>
-                                  Sửa
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteComment(activeCommentPostId, comment._id)}
-                                  style={{ ...styles.dropdownItem, color: "#e74c3c" }}
+
+                        {currentUserId &&
+                          currentUserId ===
+                            (comment.userId?._id || comment.userId) && (
+                            <div style={{ position: "relative" }}>
+                              <button
+                                onClick={() =>
+                                  setActiveDropdownCommentId(
+                                    activeDropdownCommentId === comment._id
+                                      ? null
+                                      : comment._id,
+                                  )
+                                }
+                                style={styles.commentMenuBtn}
+                              >
+                                <span
+                                  className="material-symbols-outlined"
+                                  style={{ fontSize: "18px" }}
                                 >
-                                  Xóa
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
+                                  more_horiz
+                                </span>
+                              </button>
+                              {activeDropdownCommentId === comment._id && (
+                                <div style={styles.commentDropdown}>
+                                  <button
+                                    onClick={() => startEditingComment(comment)}
+                                    style={styles.dropdownItem}
+                                  >
+                                    Sửa
+                                  </button>
+                                  <button
+                                    onClick={() =>
+                                      handleDeleteComment(
+                                        activeCommentPostId,
+                                        comment._id,
+                                      )
+                                    }
+                                    style={{
+                                      ...styles.dropdownItem,
+                                      color: "#e74c3c",
+                                    }}
+                                  >
+                                    Xóa
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                       </div>
 
                       {editingCommentId === comment._id ? (
                         <div style={styles.editCommentBox}>
                           <textarea
                             value={editingCommentContent}
-                            onChange={(e) => setEditingCommentContent(e.target.value)}
+                            onChange={(e) =>
+                              setEditingCommentContent(e.target.value)
+                            }
                             rows={2}
                             style={styles.editCommentTextarea}
                           />
@@ -698,8 +1033,16 @@ const Home = () => {
                             <button
                               type="button"
                               style={styles.saveCommentBtn}
-                              onClick={() => handleUpdateComment(activeCommentPostId, comment._id)}
-                              disabled={isUpdatingComment || !editingCommentContent.trim()}
+                              onClick={() =>
+                                handleUpdateComment(
+                                  activeCommentPostId,
+                                  comment._id,
+                                )
+                              }
+                              disabled={
+                                isUpdatingComment ||
+                                !editingCommentContent.trim()
+                              }
                             >
                               {isUpdatingComment ? "Lưu..." : "Lưu"}
                             </button>
@@ -712,11 +1055,31 @@ const Home = () => {
                   </div>
                 ))
               ) : (
-                <div style={{ padding: "20px", textAlign: "center", color: "#6c759e" }}>Chưa có bình luận nào.</div>
+                <div
+                  style={{
+                    padding: "20px",
+                    textAlign: "center",
+                    color: "#6c759e",
+                  }}
+                >
+                  Chưa có bình luận nào.
+                </div>
               )}
             </div>
 
-            <div style={{ padding: "12px 20px", borderTop: "1px solid #eff3f4", display: "flex", gap: "10px", alignItems: "center", position: "sticky", bottom: 0, backgroundColor: "#fff", zIndex: 10 }}>
+            <div
+              style={{
+                padding: "12px 20px",
+                borderTop: "1px solid #eff3f4",
+                display: "flex",
+                gap: "10px",
+                alignItems: "center",
+                position: "sticky",
+                bottom: 0,
+                backgroundColor: "#fff",
+                zIndex: 10,
+              }}
+            >
               <input
                 type="text"
                 placeholder="Viết bình luận..."
@@ -807,7 +1170,12 @@ const styles = {
     flexDirection: "column",
     gap: "20px",
   },
-  profileImg: { width: "44px", height: "44px", borderRadius: "50%", objectFit: "cover" },
+  profileImg: {
+    width: "44px",
+    height: "44px",
+    borderRadius: "50%",
+    objectFit: "cover",
+  },
   navLink: {
     display: "flex",
     alignItems: "center",
@@ -823,7 +1191,33 @@ const styles = {
     padding: "20px",
     boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
   },
-  avatarSmall: { width: "40px", height: "40px", borderRadius: "50%", objectFit: "cover" },
+  feedMetaWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: "10px",
+    flexWrap: "wrap",
+  },
+  feedBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    fontSize: "12px",
+    fontWeight: 700,
+    color: "#0b4ad6",
+    backgroundColor: "#e8f1ff",
+    border: "1px solid #cfe0ff",
+    borderRadius: "999px",
+    padding: "6px 10px",
+  },
+  feedFallbackText: {
+    fontSize: "12px",
+    color: "#5d7294",
+  },
+  avatarSmall: {
+    width: "40px",
+    height: "40px",
+    borderRadius: "50%",
+    objectFit: "cover",
+  },
   textarea: {
     width: "100%",
     background: "#f7f5ff",

@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Navigate, Routes, Route } from "react-router-dom";
 import API from "./api/axios";
 import "./App.css";
 import Login from "./pages/Login";
@@ -10,6 +10,13 @@ import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
 import UserProfile from "./pages/UserProfile";
 import Friends from "./pages/Friends";
+import Forbidden from "./pages/Forbidden";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminSettingsPage from "./pages/admin/AdminSettingsPage";
+import AdminUsersPage from "./pages/admin/AdminUsersPage";
+import ModeratorLayout from "./pages/moderator/ModeratorLayout";
+import ModeratorReportsPage from "./pages/moderator/ModeratorReportsPage";
+import RoleProtectedRoute from "./routes/RoleProtectedRoute";
 import { SocketProvider } from "./context/SocketContext";
 
 function App() {
@@ -24,11 +31,13 @@ function App() {
             const settings = res.data.data;
             if (settings.theme === "dark") {
               // Hacky but very effective way to make web app dark without rewriting inline styles
-              document.documentElement.style.filter = "invert(0.9) hue-rotate(180deg)";
+              document.documentElement.style.filter =
+                "invert(0.9) hue-rotate(180deg)";
               // Prevent images and videos from being inverted
               const style = document.createElement("style");
               style.id = "dark-mode-img-fix";
-              style.innerHTML = "img, video { filter: invert(1.11) hue-rotate(180deg) !important; }";
+              style.innerHTML =
+                "img, video { filter: invert(1.11) hue-rotate(180deg) !important; }";
               if (!document.getElementById("dark-mode-img-fix")) {
                 document.head.appendChild(style);
               }
@@ -59,6 +68,26 @@ function App() {
           <Route path="/register" element={<Register />} />
           <Route path="/messages" element={<Message />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/403" element={<Forbidden />} />
+
+          <Route element={<RoleProtectedRoute allowedRoles={["admin"]} />}>
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<Navigate to="settings" replace />} />
+              <Route path="settings" element={<AdminSettingsPage />} />
+              <Route path="users" element={<AdminUsersPage />} />
+            </Route>
+          </Route>
+
+          <Route
+            element={
+              <RoleProtectedRoute allowedRoles={["admin", "moderator"]} />
+            }
+          >
+            <Route path="/moderator" element={<ModeratorLayout />}>
+              <Route index element={<Navigate to="reports" replace />} />
+              <Route path="reports" element={<ModeratorReportsPage />} />
+            </Route>
+          </Route>
         </Routes>
       </BrowserRouter>
     </SocketProvider>

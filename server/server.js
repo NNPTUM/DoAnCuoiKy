@@ -11,6 +11,8 @@ const connectionRoutes = require("./src/routes/connection.route");
 const conversationRoutes = require("./src/routes/conversation.route");
 const messageRoutes = require("./src/routes/message.route");
 const settingRoutes = require("./src/routes/setting.route");
+const adminRoutes = require("./src/routes/admin.route");
+const moderatorRoutes = require("./src/routes/moderator.route");
 const { initSocket } = require("./src/socket/socket");
 require("./src/models");
 
@@ -29,6 +31,8 @@ app.use("/api/connections", connectionRoutes);
 app.use("/api/conversations", conversationRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/settings", settingRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/moderator", moderatorRoutes);
 
 // Tạo một API test thử
 app.get("/", (req, res) => {
