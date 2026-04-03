@@ -5,10 +5,11 @@ import moment from "moment";
 import LeftSidebar from "../components/LeftSidebar";
 import TopNavbar from "../components/TopNavbar";
 import { useSocket } from "../context/SocketContext";
+import { getStoredUser } from "../utils/storage";
 
 export default function Message() {
   const navigate = useNavigate();
-  const currentUser = JSON.parse(localStorage.getItem("user"));
+  const currentUser = getStoredUser();
   const currentUserId = currentUser?._id || currentUser?.id;
 
   // --- STATES ---
@@ -25,8 +26,8 @@ export default function Message() {
   const [editText, setEditText] = useState(""); // Nội dung đang sửa
 
   // --- IMAGE STATES ---
-  const [selectedImage, setSelectedImage] = useState(null);   // File object
-  const [imagePreview, setImagePreview] = useState(null);     // Base64 preview URL
+  const [selectedImage, setSelectedImage] = useState(null); // File object
+  const [imagePreview, setImagePreview] = useState(null); // Base64 preview URL
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const imageInputRef = useRef(null);
   // Ref lưu Promise upload đang chạy ngầm (optimistic upload)
@@ -89,7 +90,6 @@ export default function Message() {
       return;
     }
     fetchConversations();
-    
   }, []);
 
   // 2. Tự động lấy tin nhắn khi chọn một cuộc trò chuyện khác
@@ -137,11 +137,15 @@ export default function Message() {
     // Lắng nghe sự kiện xóa cuộc trò chuyện từ người kia (xóa cả 2 bên)
     socket.on("conversationDeleted", ({ conversationId }) => {
       setConversations((prev) => prev.filter((c) => c._id !== conversationId));
-      setActiveConversation((prev) => (prev?._id === conversationId ? null : prev));
-      setMessages((prev) => (activeConversation?._id === conversationId ? [] : prev));
+      setActiveConversation((prev) =>
+        prev?._id === conversationId ? null : prev,
+      );
+      setMessages((prev) =>
+        activeConversation?._id === conversationId ? [] : prev,
+      );
     });
 
-    // Chú ý: trong Message.jsx, ta không đăng ký addUser ở đây nữa 
+    // Chú ý: trong Message.jsx, ta không đăng ký addUser ở đây nữa
     // vì SocketContext đã thực hiện việc đăng ký (bắn event `addUser`) lúc tạo context.
 
     return () => {
@@ -208,7 +212,7 @@ export default function Message() {
     isSending.current = true;
 
     const textToSend = inputText;
-    const capturedPreview = imagePreview;   // lưu lại base64
+    const capturedPreview = imagePreview; // lưu lại base64
     const capturedFile = selectedImage;
     setInputText("");
 
@@ -257,7 +261,7 @@ export default function Message() {
 
         // Swap bubble tạm thành bubble thật (có _id thật + URL Cloudinary)
         setMessages((prev) =>
-          prev.map((m) => (m._id === optimisticId ? newMessage : m))
+          prev.map((m) => (m._id === optimisticId ? newMessage : m)),
         );
 
         // Cập nhật preview cuộc hội thoại
@@ -265,9 +269,11 @@ export default function Message() {
           const updated = prev.map((conv) =>
             conv._id === activeConversation._id
               ? { ...conv, lastMessage: "📷 Hình ảnh", updatedAt: new Date() }
-              : conv
+              : conv,
           );
-          return updated.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+          return updated.sort(
+            (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
+          );
         });
 
         // Socket
@@ -298,9 +304,11 @@ export default function Message() {
         const updatedConvos = prev.map((conv) =>
           conv._id === activeConversation._id
             ? { ...conv, lastMessage: previewText, updatedAt: new Date() }
-            : conv
+            : conv,
         );
-        return updatedConvos.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+        return updatedConvos.sort(
+          (a, b) => new Date(b.updatedAt) - new Date(a.updatedAt),
+        );
       });
 
       const receiver = getOtherUser(activeConversation);
@@ -312,7 +320,6 @@ export default function Message() {
           messageData: newMessage,
         });
       }
-
     } catch (error) {
       console.error("Gửi tin nhắn thất bại", error);
       setInputText(textToSend);
@@ -340,9 +347,10 @@ export default function Message() {
         const ctx = canvas.getContext("2d");
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         canvas.toBlob(
-          (blob) => resolve(new File([blob], file.name, { type: "image/jpeg" })),
+          (blob) =>
+            resolve(new File([blob], file.name, { type: "image/jpeg" })),
           "image/jpeg",
-          quality
+          quality,
         );
       };
       img.src = url;
@@ -423,7 +431,9 @@ export default function Message() {
   const handleEditMessage = async (messageId) => {
     if (!editText.trim()) return;
     try {
-      const res = await API.patch(`/messages/edit/${messageId}`, { text: editText });
+      const res = await API.patch(`/messages/edit/${messageId}`, {
+        text: editText,
+      });
       if (res.data.success) {
         // Cập nhật local state
         setMessages((prev) =>
@@ -482,7 +492,9 @@ export default function Message() {
     setDeleteModal(null);
     setConvoMenuId(null);
     try {
-      const res = await API.delete(`/conversations/${conv._id}/delete-for-both`);
+      const res = await API.delete(
+        `/conversations/${conv._id}/delete-for-both`,
+      );
       if (res.data.success) {
         setConversations((prev) => prev.filter((c) => c._id !== conv._id));
         if (activeConversation?._id === conv._id) {
@@ -623,11 +635,16 @@ export default function Message() {
                         style={styles.convoMoreBtn}
                         onClick={(e) => {
                           e.stopPropagation();
-                          setConvoMenuId(convoMenuId === conv._id ? null : conv._id);
+                          setConvoMenuId(
+                            convoMenuId === conv._id ? null : conv._id,
+                          );
                         }}
                         title="Tùy chọn"
                       >
-                        <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>
+                        <span
+                          className="material-symbols-outlined"
+                          style={{ fontSize: "18px" }}
+                        >
                           more_horiz
                         </span>
                       </button>
@@ -645,7 +662,10 @@ export default function Message() {
                               setDeleteModal({ conv });
                             }}
                           >
-                            <span className="material-symbols-outlined" style={{ fontSize: "16px", color: "#e74c3c" }}>
+                            <span
+                              className="material-symbols-outlined"
+                              style={{ fontSize: "16px", color: "#e74c3c" }}
+                            >
                               delete
                             </span>
                             Xóa đoạn chat
@@ -773,22 +793,29 @@ export default function Message() {
                             }}
                           >
                             {/* Nút 3 chấm chỉ hiển thị khi là tin của mình và chưa thu hồi và không đang sửa */}
-                            {isMe && !isRecalled && editingMsgId !== msg._id && (
-                              <button
-                                style={styles.msgMenuBtn}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setContextMenu(
-                                    contextMenu?.msgId === msg._id
-                                      ? null
-                                      : { msgId: msg._id },
-                                  );
-                                }}
-                                title="Tùy chọn"
-                              >
-                                <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>more_horiz</span>
-                              </button>
-                            )}
+                            {isMe &&
+                              !isRecalled &&
+                              editingMsgId !== msg._id && (
+                                <button
+                                  style={styles.msgMenuBtn}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setContextMenu(
+                                      contextMenu?.msgId === msg._id
+                                        ? null
+                                        : { msgId: msg._id },
+                                    );
+                                  }}
+                                  title="Tùy chọn"
+                                >
+                                  <span
+                                    className="material-symbols-outlined"
+                                    style={{ fontSize: "18px" }}
+                                  >
+                                    more_horiz
+                                  </span>
+                                </button>
+                              )}
 
                             {/* Context Menu */}
                             {contextMenu?.msgId === msg._id && (
@@ -804,14 +831,24 @@ export default function Message() {
                                     setEditText(msg.text);
                                   }}
                                 >
-                                  <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>edit</span>
+                                  <span
+                                    className="material-symbols-outlined"
+                                    style={{ fontSize: "16px" }}
+                                  >
+                                    edit
+                                  </span>
                                   Sửa tin nhắn
                                 </button>
                                 <button
                                   style={styles.contextMenuItem}
                                   onClick={() => handleRecallMessage(msg._id)}
                                 >
-                                  <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>undo</span>
+                                  <span
+                                    className="material-symbols-outlined"
+                                    style={{ fontSize: "16px" }}
+                                  >
+                                    undo
+                                  </span>
                                   Thu hồi tin nhắn
                                 </button>
                               </div>
@@ -820,61 +857,130 @@ export default function Message() {
                             {/* Nội dung tin nhắn / Inline edit */}
                             {editingMsgId === msg._id ? (
                               /* Chế độ sửa inline */
-                              <div style={styles.editInputWrapper} onClick={(e) => e.stopPropagation()}>
+                              <div
+                                style={styles.editInputWrapper}
+                                onClick={(e) => e.stopPropagation()}
+                              >
                                 <input
                                   autoFocus
                                   value={editText}
                                   onChange={(e) => setEditText(e.target.value)}
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter") { e.preventDefault(); handleEditMessage(msg._id); }
-                                    if (e.key === "Escape") { setEditingMsgId(null); setEditText(""); }
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      handleEditMessage(msg._id);
+                                    }
+                                    if (e.key === "Escape") {
+                                      setEditingMsgId(null);
+                                      setEditText("");
+                                    }
                                   }}
                                   style={styles.editInput}
                                 />
-                                <div style={{ display: "flex", gap: "6px", marginTop: "6px", justifyContent: "flex-end" }}>
+                                <div
+                                  style={{
+                                    display: "flex",
+                                    gap: "6px",
+                                    marginTop: "6px",
+                                    justifyContent: "flex-end",
+                                  }}
+                                >
                                   <button
                                     style={styles.editCancelBtn}
-                                    onClick={() => { setEditingMsgId(null); setEditText(""); }}
-                                  >Hủy</button>
+                                    onClick={() => {
+                                      setEditingMsgId(null);
+                                      setEditText("");
+                                    }}
+                                  >
+                                    Hủy
+                                  </button>
                                   <button
                                     style={styles.editSaveBtn}
                                     onClick={() => handleEditMessage(msg._id)}
-                                  >Lưu</button>
+                                  >
+                                    Lưu
+                                  </button>
                                 </div>
                               </div>
                             ) : isRecalled ? (
-                              <div style={isMe ? styles.bubbleRecalledOut : styles.bubbleRecalledIn}>
-                                <span className="material-symbols-outlined" style={{ fontSize: "14px", verticalAlign: "middle", marginRight: "4px" }}>block</span>
+                              <div
+                                style={
+                                  isMe
+                                    ? styles.bubbleRecalledOut
+                                    : styles.bubbleRecalledIn
+                                }
+                              >
+                                <span
+                                  className="material-symbols-outlined"
+                                  style={{
+                                    fontSize: "14px",
+                                    verticalAlign: "middle",
+                                    marginRight: "4px",
+                                  }}
+                                >
+                                  block
+                                </span>
                                 Tin nhắn đã bị thu hồi
                               </div>
                             ) : msg.messageType === "image" && msg.imageUrl ? (
                               /* Tin nhắn ảnh */
-                              <div style={{ display: "flex", flexDirection: "column", gap: "6px", alignItems: isMe ? "flex-end" : "flex-start" }}>
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "6px",
+                                  alignItems: isMe ? "flex-end" : "flex-start",
+                                }}
+                              >
                                 <div style={{ position: "relative" }}>
-                                  <div style={isMe ? styles.imageBubbleOut : styles.imageBubbleIn}>
+                                  <div
+                                    style={
+                                      isMe
+                                        ? styles.imageBubbleOut
+                                        : styles.imageBubbleIn
+                                    }
+                                  >
                                     <img
                                       src={msg.imageUrl}
                                       alt="Ảnh"
                                       style={{
                                         ...styles.msgImage,
                                         opacity: msg._isOptimistic ? 0.65 : 1,
-                                        filter: msg._isOptimistic ? "blur(0.5px)" : "none",
+                                        filter: msg._isOptimistic
+                                          ? "blur(0.5px)"
+                                          : "none",
                                         transition: "opacity 0.3s, filter 0.3s",
                                       }}
-                                      onClick={() => !msg._isOptimistic && window.open(msg.imageUrl, "_blank")}
+                                      onClick={() =>
+                                        !msg._isOptimistic &&
+                                        window.open(msg.imageUrl, "_blank")
+                                      }
                                     />
                                   </div>
                                   {/* Overlay loading khi đang upload */}
                                   {msg._isOptimistic && (
-                                    <div style={{
-                                      position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-                                      display: "flex", alignItems: "center", justifyContent: "center",
-                                      borderRadius: "18px",
-                                    }}>
+                                    <div
+                                      style={{
+                                        position: "absolute",
+                                        top: 0,
+                                        left: 0,
+                                        right: 0,
+                                        bottom: 0,
+                                        display: "flex",
+                                        alignItems: "center",
+                                        justifyContent: "center",
+                                        borderRadius: "18px",
+                                      }}
+                                    >
                                       <div style={styles.uploadingOverlay}>
                                         <span
                                           className="material-symbols-outlined"
-                                          style={{ fontSize: "22px", color: "#fff", animation: "spin 1s linear infinite" }}
+                                          style={{
+                                            fontSize: "22px",
+                                            color: "#fff",
+                                            animation:
+                                              "spin 1s linear infinite",
+                                          }}
                                         >
                                           progress_activity
                                         </span>
@@ -883,14 +989,22 @@ export default function Message() {
                                   )}
                                 </div>
                                 {msg.text && (
-                                  <div style={isMe ? styles.bubbleOut : styles.bubbleIn}>
+                                  <div
+                                    style={
+                                      isMe ? styles.bubbleOut : styles.bubbleIn
+                                    }
+                                  >
                                     {msg.text}
                                   </div>
                                 )}
                               </div>
                             ) : (
                               msg.text && (
-                                <div style={isMe ? styles.bubbleOut : styles.bubbleIn}>
+                                <div
+                                  style={
+                                    isMe ? styles.bubbleOut : styles.bubbleIn
+                                  }
+                                >
                                   {msg.text}
                                 </div>
                               )
@@ -898,7 +1012,14 @@ export default function Message() {
                             <div style={styles.msgMeta}>
                               {moment(msg.createdAt).format("LT")}
                               {msg.isEdited && !isRecalled && (
-                                <span style={{ fontStyle: "italic", fontSize: "10px" }}>(đã chỉnh sửa)</span>
+                                <span
+                                  style={{
+                                    fontStyle: "italic",
+                                    fontSize: "10px",
+                                  }}
+                                >
+                                  (đã chỉnh sửa)
+                                </span>
                               )}
                             </div>
                           </div>
@@ -915,12 +1036,31 @@ export default function Message() {
                 {imagePreview && (
                   <div style={styles.imagePreviewArea}>
                     <div style={styles.imagePreviewWrap}>
-                      <img src={imagePreview} alt="preview" style={styles.imagePreviewImg} />
-                      <button style={styles.imagePreviewRemove} onClick={handleCancelImage} title="Xóa ảnh">
-                        <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>close</span>
+                      <img
+                        src={imagePreview}
+                        alt="preview"
+                        style={styles.imagePreviewImg}
+                      />
+                      <button
+                        style={styles.imagePreviewRemove}
+                        onClick={handleCancelImage}
+                        title="Xóa ảnh"
+                      >
+                        <span
+                          className="material-symbols-outlined"
+                          style={{ fontSize: "16px" }}
+                        >
+                          close
+                        </span>
                       </button>
                     </div>
-                    <span style={{ fontSize: "12px", color: "#6c759e", marginLeft: "8px" }}>
+                    <span
+                      style={{
+                        fontSize: "12px",
+                        color: "#6c759e",
+                        marginLeft: "8px",
+                      }}
+                    >
                       {selectedImage?.name}
                     </span>
                   </div>
@@ -955,7 +1095,11 @@ export default function Message() {
                   <div style={styles.inputWrapper}>
                     <input
                       type="text"
-                      placeholder={selectedImage ? "Thêm chú thích cho ảnh... (tùy chọn)" : "Nhập tin nhắn..."}
+                      placeholder={
+                        selectedImage
+                          ? "Thêm chú thích cho ảnh... (tùy chọn)"
+                          : "Nhập tin nhắn..."
+                      }
                       value={inputText}
                       onChange={(e) => setInputText(e.target.value)}
                       onKeyDown={(e) => {
@@ -973,12 +1117,29 @@ export default function Message() {
                   <button
                     onClick={handleSendMessage}
                     disabled={isUploadingImage}
-                    style={(inputText.trim() || selectedImage) && !isUploadingImage ? styles.sendBtnActive : styles.sendBtn}
+                    style={
+                      (inputText.trim() || selectedImage) && !isUploadingImage
+                        ? styles.sendBtnActive
+                        : styles.sendBtn
+                    }
                   >
                     {isUploadingImage ? (
-                      <span className="material-symbols-outlined" style={{ marginLeft: "2px", animation: "spin 1s linear infinite" }}>progress_activity</span>
+                      <span
+                        className="material-symbols-outlined"
+                        style={{
+                          marginLeft: "2px",
+                          animation: "spin 1s linear infinite",
+                        }}
+                      >
+                        progress_activity
+                      </span>
                     ) : (
-                      <span className="material-symbols-outlined" style={{ marginLeft: "2px" }}>send</span>
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ marginLeft: "2px" }}
+                      >
+                        send
+                      </span>
                     )}
                   </button>
                 </div>
@@ -1016,87 +1177,135 @@ export default function Message() {
           </section>
 
           {/* ===== INFO PANEL – cột thứ 3 bên phải, đẩy chatWindow thu nhỏ ===== */}
-          {showInfoPanel && activeConversation && (() => {
-            const otherUser = getOtherUser(activeConversation);
-            const sharedImages = messages.filter(
-              (m) => m.messageType === "image" && m.imageUrl && !m.isRecalled
-            );
-            return (
-              <div style={styles.infoPanel}>
-                {/* Header */}
-                <div style={styles.infoPanelHeader}>
-                  <span style={{ fontWeight: 700, fontSize: "14px", color: "#0f1419" }}>
-                    Thông tin
-                  </span>
-                  <button
-                    style={styles.infoPanelClose}
-                    onClick={() => setShowInfoPanel(false)}
-                    title="Đóng"
-                  >
-                    <span className="material-symbols-outlined" style={{ fontSize: "18px" }}>close</span>
-                  </button>
-                </div>
-
-                <div style={styles.infoPanelBody}>
-                  {/* Avatar + tên */}
-                  <div style={styles.infoPanelUser}>
-                    <img
-                      src={otherUser?.avatarUrl || "https://via.placeholder.com/150"}
-                      alt=""
-                      style={styles.infoPanelAvatar}
-                    />
-                    <div style={{ fontWeight: 700, fontSize: "14px", color: "#0f1419", marginTop: "6px" }}>
-                      {otherUser?.username}
-                    </div>
-                    <div style={{ fontSize: "12px", color: "#1877F2" }}>Đang hoạt động</div>
-                  </div>
-
-                  <div style={styles.infoPanelDivider} />
-
-                  {/* Ảnh đã chia sẻ */}
-                  <div style={{ padding: "10px 12px" }}>
-                    <div style={styles.infoPanelSectionTitle}>
-                      <span className="material-symbols-outlined" style={{ fontSize: "15px", color: "#1877F2" }}>photo_library</span>
-                      Ảnh đã chia sẻ ({sharedImages.length})
-                    </div>
-                    {sharedImages.length === 0 ? (
-                      <div style={{ textAlign: "center", color: "#9aa0b4", fontSize: "12px", padding: "10px 0" }}>
-                        Chưa có ảnh nào
-                      </div>
-                    ) : (
-                      <div style={styles.imageGrid}>
-                        {sharedImages.map((m) => (
-                          <div
-                            key={m._id}
-                            className="image-grid-item"
-                            style={styles.imageGridItem}
-                            onClick={() => setLightboxImg(m.imageUrl)}
-                            title="Xem ảnh"
-                          >
-                            <img src={m.imageUrl} alt="" style={styles.imageGridImg} />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={styles.infoPanelDivider} />
-
-                  {/* Xóa đoạn chat */}
-                  <div style={{ padding: "10px 12px" }}>
-                    <button
-                      className="info-delete-btn"
-                      style={styles.infoPanelDeleteBtn}
-                      onClick={() => setDeleteModal({ conv: activeConversation })}
+          {showInfoPanel &&
+            activeConversation &&
+            (() => {
+              const otherUser = getOtherUser(activeConversation);
+              const sharedImages = messages.filter(
+                (m) => m.messageType === "image" && m.imageUrl && !m.isRecalled,
+              );
+              return (
+                <div style={styles.infoPanel}>
+                  {/* Header */}
+                  <div style={styles.infoPanelHeader}>
+                    <span
+                      style={{
+                        fontWeight: 700,
+                        fontSize: "14px",
+                        color: "#0f1419",
+                      }}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>delete</span>
-                      Xóa đoạn chat
+                      Thông tin
+                    </span>
+                    <button
+                      style={styles.infoPanelClose}
+                      onClick={() => setShowInfoPanel(false)}
+                      title="Đóng"
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: "18px" }}
+                      >
+                        close
+                      </span>
                     </button>
                   </div>
+
+                  <div style={styles.infoPanelBody}>
+                    {/* Avatar + tên */}
+                    <div style={styles.infoPanelUser}>
+                      <img
+                        src={
+                          otherUser?.avatarUrl ||
+                          "https://via.placeholder.com/150"
+                        }
+                        alt=""
+                        style={styles.infoPanelAvatar}
+                      />
+                      <div
+                        style={{
+                          fontWeight: 700,
+                          fontSize: "14px",
+                          color: "#0f1419",
+                          marginTop: "6px",
+                        }}
+                      >
+                        {otherUser?.username}
+                      </div>
+                      <div style={{ fontSize: "12px", color: "#1877F2" }}>
+                        Đang hoạt động
+                      </div>
+                    </div>
+
+                    <div style={styles.infoPanelDivider} />
+
+                    {/* Ảnh đã chia sẻ */}
+                    <div style={{ padding: "10px 12px" }}>
+                      <div style={styles.infoPanelSectionTitle}>
+                        <span
+                          className="material-symbols-outlined"
+                          style={{ fontSize: "15px", color: "#1877F2" }}
+                        >
+                          photo_library
+                        </span>
+                        Ảnh đã chia sẻ ({sharedImages.length})
+                      </div>
+                      {sharedImages.length === 0 ? (
+                        <div
+                          style={{
+                            textAlign: "center",
+                            color: "#9aa0b4",
+                            fontSize: "12px",
+                            padding: "10px 0",
+                          }}
+                        >
+                          Chưa có ảnh nào
+                        </div>
+                      ) : (
+                        <div style={styles.imageGrid}>
+                          {sharedImages.map((m) => (
+                            <div
+                              key={m._id}
+                              className="image-grid-item"
+                              style={styles.imageGridItem}
+                              onClick={() => setLightboxImg(m.imageUrl)}
+                              title="Xem ảnh"
+                            >
+                              <img
+                                src={m.imageUrl}
+                                alt=""
+                                style={styles.imageGridImg}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={styles.infoPanelDivider} />
+
+                    {/* Xóa đoạn chat */}
+                    <div style={{ padding: "10px 12px" }}>
+                      <button
+                        className="info-delete-btn"
+                        style={styles.infoPanelDeleteBtn}
+                        onClick={() =>
+                          setDeleteModal({ conv: activeConversation })
+                        }
+                      >
+                        <span
+                          className="material-symbols-outlined"
+                          style={{ fontSize: "16px" }}
+                        >
+                          delete
+                        </span>
+                        Xóa đoạn chat
+                      </button>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            );
-          })()}
+              );
+            })()}
 
           {/* ===== LIGHTBOX XEM \u1ea2NH TO ===== */}
           {lightboxImg && (
@@ -1109,7 +1318,12 @@ export default function Message() {
                 onClick={() => setLightboxImg(null)}
                 title="Đóng"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: "26px" }}>close</span>
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: "26px" }}
+                >
+                  close
+                </span>
               </button>
               <img
                 src={lightboxImg}
@@ -1125,7 +1339,12 @@ export default function Message() {
                 onClick={(e) => e.stopPropagation()}
                 title="Tải xuống"
               >
-                <span className="material-symbols-outlined" style={{ fontSize: "20px" }}>download</span>
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: "20px" }}
+                >
+                  download
+                </span>
                 Tải xuống
               </a>
             </div>
@@ -1229,10 +1448,7 @@ export default function Message() {
 
         {/* ===== MODAL XÓA ĐOẠN CHAT ===== */}
         {deleteModal && (
-          <div
-            style={styles.modalOverlay}
-            onClick={() => setDeleteModal(null)}
-          >
+          <div style={styles.modalOverlay} onClick={() => setDeleteModal(null)}>
             <div
               style={{
                 ...styles.modalContent,
@@ -1242,39 +1458,102 @@ export default function Message() {
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #eff3f4" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "4px" }}>
-                  <div style={{ width: "40px", height: "40px", borderRadius: "50%", background: "#fff0f0", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <span className="material-symbols-outlined" style={{ color: "#e74c3c", fontSize: "22px" }}>delete</span>
+              <div
+                style={{
+                  padding: "20px 24px 16px",
+                  borderBottom: "1px solid #eff3f4",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "12px",
+                    marginBottom: "4px",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: "40px",
+                      height: "40px",
+                      borderRadius: "50%",
+                      background: "#fff0f0",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ color: "#e74c3c", fontSize: "22px" }}
+                    >
+                      delete
+                    </span>
                   </div>
                   <div>
-                    <h3 style={{ margin: 0, fontSize: "17px", fontWeight: 700, color: "#0f1419" }}>
+                    <h3
+                      style={{
+                        margin: 0,
+                        fontSize: "17px",
+                        fontWeight: 700,
+                        color: "#0f1419",
+                      }}
+                    >
                       Xóa đoạn chat
                     </h3>
-                    <p style={{ margin: 0, fontSize: "13px", color: "#6c759e" }}>
-                      với {deleteModal.conv && getOtherUser(deleteModal.conv)?.username}
+                    <p
+                      style={{ margin: 0, fontSize: "13px", color: "#6c759e" }}
+                    >
+                      với{" "}
+                      {deleteModal.conv &&
+                        getOtherUser(deleteModal.conv)?.username}
                     </p>
                   </div>
                 </div>
               </div>
 
               {/* Options */}
-              <div style={{ padding: "16px 24px", display: "flex", flexDirection: "column", gap: "12px" }}>
+              <div
+                style={{
+                  padding: "16px 24px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "12px",
+                }}
+              >
                 {/* Lựa chọn 1: Chỉ xóa bên mình */}
                 <button
                   style={styles.deleteOptionBtn}
                   onClick={() => handleDeleteForMe(deleteModal.conv)}
                 >
                   <div style={styles.deleteOptionIcon}>
-                    <span className="material-symbols-outlined" style={{ fontSize: "22px", color: "#1877F2" }}>person_remove</span>
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ fontSize: "22px", color: "#1877F2" }}
+                    >
+                      person_remove
+                    </span>
                   </div>
                   <div style={{ textAlign: "left" }}>
-                    <div style={{ fontWeight: 700, fontSize: "15px", color: "#0f1419", marginBottom: "2px" }}>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: "15px",
+                        color: "#0f1419",
+                        marginBottom: "2px",
+                      }}
+                    >
                       Chỉ xóa bên tôi
                     </div>
-                    <div style={{ fontSize: "13px", color: "#6c759e", lineHeight: 1.4 }}>
-                      Đoạn chat sẽ biến khỏi danh sách của bạn.
-                      Người kia vẫn thấy toàn bộ lịch sử.
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        color: "#6c759e",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Đoạn chat sẽ biến khỏi danh sách của bạn. Người kia vẫn
+                      thấy toàn bộ lịch sử.
                     </div>
                   </div>
                 </button>
@@ -1284,15 +1563,39 @@ export default function Message() {
                   style={{ ...styles.deleteOptionBtn, borderColor: "#ffcdd2" }}
                   onClick={() => handleDeleteForBoth(deleteModal.conv)}
                 >
-                  <div style={{ ...styles.deleteOptionIcon, background: "#fff0f0" }}>
-                    <span className="material-symbols-outlined" style={{ fontSize: "22px", color: "#e74c3c" }}>group_remove</span>
+                  <div
+                    style={{
+                      ...styles.deleteOptionIcon,
+                      background: "#fff0f0",
+                    }}
+                  >
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ fontSize: "22px", color: "#e74c3c" }}
+                    >
+                      group_remove
+                    </span>
                   </div>
                   <div style={{ textAlign: "left" }}>
-                    <div style={{ fontWeight: 700, fontSize: "15px", color: "#e74c3c", marginBottom: "2px" }}>
+                    <div
+                      style={{
+                        fontWeight: 700,
+                        fontSize: "15px",
+                        color: "#e74c3c",
+                        marginBottom: "2px",
+                      }}
+                    >
                       Xóa cả 2 bên
                     </div>
-                    <div style={{ fontSize: "13px", color: "#6c759e", lineHeight: 1.4 }}>
-                      Toàn bộ tin nhắn sẽ bị xóa vĩnh viễn. Cả 2 người đều không xem được nữa.
+                    <div
+                      style={{
+                        fontSize: "13px",
+                        color: "#6c759e",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      Toàn bộ tin nhắn sẽ bị xóa vĩnh viễn. Cả 2 người đều không
+                      xem được nữa.
                     </div>
                   </div>
                 </button>
@@ -1968,7 +2271,7 @@ const styles = {
   // ========== INFO PANEL – ló ra ngoài bên phải của messageBox ==========
   infoPanel: {
     position: "absolute",
-    left: "100%",          // đặt ngưỡc cạnh phải của messageBox
+    left: "100%", // đặt ngưỡc cạnh phải của messageBox
     top: 0,
     height: "100%",
     width: "280px",

@@ -5,6 +5,12 @@ const Block = require("../models/block.model");
 const UserSetting = require("../models/user_setting.model");
 const SystemSetting = require("../models/system_setting.model");
 const { getIo, getUser } = require("../socket/socket");
+const {
+  FRIEND_REQUEST_STATUS,
+} = require("../utils/friend-request-status.util");
+const {
+  resetRequestToPendingAndNotify,
+} = require("../utils/friend-request.util");
 
 // Hàm helper gửi thông báo real-time khi có lời mời kết bạn mới
 const sendFriendRequestNotification = async (
@@ -81,13 +87,13 @@ exports.sendFriendRequest = async (req, res) => {
     });
 
     if (existingRequest) {
-      if (existingRequest.status === "pending") {
+      if (existingRequest.status === FRIEND_REQUEST_STATUS.PENDING) {
         return res.status(400).json({
           success: false,
           message: "Đã gửi lời mời trước đó, đang chờ phê duyệt",
         });
       }
-      if (existingRequest.status === "accepted") {
+      if (existingRequest.status === FRIEND_REQUEST_STATUS.ACCEPTED) {
         // Kiểm tra thực tế trong Friendship — có thể họ đã hủy kết bạn
         const stillFriends = await Friendship.findOne({
           users: { $all: [senderId, receiverId] },
@@ -98,31 +104,29 @@ exports.sendFriendRequest = async (req, res) => {
             .json({ success: false, message: "Hai người đã là bạn bè" });
         }
         // Đã hủy kết bạn → reset FriendRequest và cho phép gửi lại
-        existingRequest.status = "pending";
-        await existingRequest.save();
-        await sendFriendRequestNotification(
+        const refreshedRequest = await resetRequestToPendingAndNotify({
+          friendRequest: existingRequest,
           senderId,
           receiverId,
-          existingRequest,
-        );
+          notifyFn: sendFriendRequestNotification,
+        });
         return res.status(200).json({
           success: true,
           message: "Đã gửi lời mời kết bạn",
-          data: existingRequest,
+          data: refreshedRequest,
         });
       }
       // Status là 'declined' → cho phép gửi lại bằng cách reset
-      existingRequest.status = "pending";
-      await existingRequest.save();
-      await sendFriendRequestNotification(
+      const refreshedRequest = await resetRequestToPendingAndNotify({
+        friendRequest: existingRequest,
         senderId,
         receiverId,
-        existingRequest,
-      );
+        notifyFn: sendFriendRequestNotification,
+      });
       return res.status(200).json({
         success: true,
         message: "Đã gửi lại lời mời kết bạn",
-        data: existingRequest,
+        data: refreshedRequest,
       });
     }
 
@@ -156,7 +160,7 @@ exports.withdrawFriendRequest = async (req, res) => {
     const request = await FriendRequest.findOneAndDelete({
       senderId,
       receiverId,
-      status: "pending",
+      status: FRIEND_REQUEST_STATUS.PENDING,
     });
 
     if (!request) {
@@ -195,12 +199,12 @@ exports.acceptFriendRequest = async (req, res) => {
     const request = await FriendRequest.findOne({
       _id: requestId,
       receiverId,
-      status: "pending",
+      status: FRIEND_REQUEST_STATUS.PENDING,
     });
     if (!request) throw new Error("Không tìm thấy lời mời hợp lệ");
 
     // Thao tác 1: Cập nhật trạng thái lời mời thành 'accepted'
-    request.status = "accepted";
+    request.status = FRIEND_REQUEST_STATUS.ACCEPTED;
     await request.save({ session });
 
     // Thao tác 2: Tạo bản ghi bạn bè
@@ -270,8 +274,16 @@ exports.blockUser = async (req, res) => {
     await FriendRequest.deleteMany(
       {
         $or: [
-          { senderId: blockerId, receiverId: blockedId, status: "pending" },
-          { senderId: blockedId, receiverId: blockerId, status: "pending" },
+          {
+            senderId: blockerId,
+            receiverId: blockedId,
+            status: FRIEND_REQUEST_STATUS.PENDING,
+          },
+          {
+            senderId: blockedId,
+            receiverId: blockerId,
+            status: FRIEND_REQUEST_STATUS.PENDING,
+          },
         ],
       },
       { session },
@@ -294,7 +306,7 @@ exports.getPendingRequests = async (req, res) => {
     const userId = req.user.id;
     const requests = await FriendRequest.find({
       receiverId: userId,
-      status: "pending",
+      status: FRIEND_REQUEST_STATUS.PENDING,
     }).populate("senderId", "username avatarUrl"); // Lấy thông tin người gửi
 
     res.status(200).json({ success: true, data: requests });
@@ -309,7 +321,7 @@ exports.getSentRequests = async (req, res) => {
     const userId = req.user.id;
     const requests = await FriendRequest.find({
       senderId: userId,
-      status: "pending",
+      status: FRIEND_REQUEST_STATUS.PENDING,
     }).populate("receiverId", "username avatarUrl");
     res.status(200).json({ success: true, data: requests });
   } catch (error) {
@@ -338,7 +350,7 @@ exports.getFriendStatus = async (req, res) => {
     const sentRequest = await FriendRequest.findOne({
       senderId: userId,
       receiverId: targetId,
-      status: "pending",
+      status: FRIEND_REQUEST_STATUS.PENDING,
     });
     if (sentRequest)
       return res.status(200).json({ success: true, status: "sent" });
@@ -347,10 +359,13 @@ exports.getFriendStatus = async (req, res) => {
     const receivedRequest = await FriendRequest.findOne({
       senderId: targetId,
       receiverId: userId,
-      status: "pending",
+      status: FRIEND_REQUEST_STATUS.PENDING,
     });
     if (receivedRequest)
-      return res.status(200).json({ success: true, status: "pending" });
+      return res.status(200).json({
+        success: true,
+        status: FRIEND_REQUEST_STATUS.PENDING,
+      });
 
     return res.status(200).json({ success: true, status: "none" });
   } catch (error) {
@@ -365,8 +380,12 @@ exports.declineFriendRequest = async (req, res) => {
     const receiverId = req.user.id;
 
     const request = await FriendRequest.findOneAndUpdate(
-      { _id: requestId, receiverId, status: "pending" },
-      { status: "declined" },
+      {
+        _id: requestId,
+        receiverId,
+        status: FRIEND_REQUEST_STATUS.PENDING,
+      },
+      { status: FRIEND_REQUEST_STATUS.DECLINED },
     );
 
     if (!request)

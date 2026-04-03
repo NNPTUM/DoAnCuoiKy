@@ -11,7 +11,6 @@ const initialSettings = {
     newsfeedAlgorithm: "chronological",
     friendSuggestionLimit: 10,
   },
-  o8,
   ads: {
     isAdsEnabled: false,
   },

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import API from "../api/axios";
 import DashboardTopNavbar from "../components/DashboardTopNavbar";
 import "./dashboard.css";
+import { getStoredUser } from "../utils/storage";
 
 const initialSettings = {
   features: {
@@ -28,7 +29,7 @@ const AdminDashboard = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const currentUser = getStoredUser({});
 
   const stats = useMemo(() => {
     const totalUsers = users.length;

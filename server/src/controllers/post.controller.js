@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const Post = require("../models/post.model");
 const Media = require("../models/media.model");
-const Comment = require("../models/comment.model"); // optional but prevents potential ReferenceError below
 const Block = require("../models/block.model");
 const SystemSetting = require("../models/system_setting.model");
 
@@ -310,19 +309,6 @@ exports.deletePost = async (req, res) => {
     res
       .status(200)
       .json({ success: true, message: "Đã xóa bài viết thành công" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-exports.getCommentsByPost = async (req, res) => {
-  try {
-    const { postId } = req.params;
-    const comments = await Comment.find({ postId })
-      .populate("userId", "username avatarUrl") // Lấy thông tin người bình luận
-      .sort({ createdAt: -1 }); // Mới nhất lên đầu
-
-    res.status(200).json({ success: true, data: comments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

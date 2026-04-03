@@ -1,13 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import API from "../api/axios";
+import { getStoredUser } from "../utils/storage";
 
 const LeftSidebar = ({ style }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const [currentUser, setCurrentUser] = useState(
-    JSON.parse(localStorage.getItem("user") || "{}"),
-  );
+  const [currentUser, setCurrentUser] = useState(getStoredUser({}));
 
   const activeTab = location.pathname;
 

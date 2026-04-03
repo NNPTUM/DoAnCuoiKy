@@ -12,6 +12,7 @@ import UserHoverCard from "../components/UserHoverCard";
 import LeftSidebar from "../components/LeftSidebar";
 import TopNavbar from "../components/TopNavbar";
 import { useSocket } from "../context/SocketContext";
+import { getStoredUser } from "../utils/storage";
 
 const formatAlgorithmLabel = (algorithm) => {
   if (algorithm === "engagement") return "Engagement";
@@ -53,13 +54,7 @@ const Home = () => {
   const loadMoreRef = useRef(null);
 
   const navigate = useNavigate();
-  const currentUser = useMemo(() => {
-    try {
-      return JSON.parse(localStorage.getItem("user"));
-    } catch {
-      return null;
-    }
-  }, []);
+  const currentUser = useMemo(() => getStoredUser(), []);
   const currentUserId = currentUser?._id || currentUser?.id;
 
   // Kiểm tra đăng nhập khi vào trang

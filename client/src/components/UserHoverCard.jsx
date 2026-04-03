@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import API from "../api/axios";
+import { getStoredUser } from "../utils/storage";
 
 /**
  * UserHoverCard – Bọc quanh avatar/tên của user.
@@ -14,14 +15,14 @@ const SHOW_DELAY = 350;
 const HIDE_DELAY = 250;
 
 const UserHoverCard = ({ user, children }) => {
-  const [visible, setVisible]           = useState(false);
+  const [visible, setVisible] = useState(false);
   const [friendStatus, setFriendStatus] = useState("none");
-  const [sending, setSending]           = useState(false);
+  const [sending, setSending] = useState(false);
   const showTimer = useRef(null);
   const hideTimer = useRef(null);
-  const navigate  = useNavigate();
+  const navigate = useNavigate();
 
-  const currentUser = JSON.parse(localStorage.getItem("user"));
+  const currentUser = getStoredUser();
   const isMe = currentUser?._id === user?._id || currentUser?.id === user?._id;
 
   /* --- helper: cancel both timers --- */
@@ -43,7 +44,7 @@ const UserHoverCard = ({ user, children }) => {
 
   /* --- card handlers --- */
   const onCardEnter = () => {
-    clearAll();          // cancel any pending hide
+    clearAll(); // cancel any pending hide
     setVisible(true);
   };
 
@@ -82,7 +83,9 @@ const UserHoverCard = ({ user, children }) => {
     if (!user?._id) return;
     setSending(true);
     try {
-      const res = await API.post("/connections/requests", { receiverId: user._id });
+      const res = await API.post("/connections/requests", {
+        receiverId: user._id,
+      });
       if (res.data.success) {
         setFriendStatus("sent");
         // Đánh dấu đã xử lý để không bị reset khi card đóng/mở lại
@@ -136,7 +139,7 @@ const UserHoverCard = ({ user, children }) => {
               left: "50%",
               transform: "translateX(-50%)",
               width: "300px",
-              height: "16px",   // matches the gap (top: calc(100% + 12px) + a little buffer)
+              height: "16px", // matches the gap (top: calc(100% + 12px) + a little buffer)
               zIndex: 9998,
             }}
             onMouseEnter={onCardEnter}
@@ -154,7 +157,10 @@ const UserHoverCard = ({ user, children }) => {
 
             <div style={styles.avatarWrap}>
               <img
-                src={user.avatarUrl || `https://ui-avatars.com/api/?name=${user.username}`}
+                src={
+                  user.avatarUrl ||
+                  `https://ui-avatars.com/api/?name=${user.username}`
+                }
                 alt={user.username}
                 style={styles.cardAvatar}
               />
@@ -173,7 +179,12 @@ const UserHoverCard = ({ user, children }) => {
                       navigate(`/profile`, { state: { openEdit: true } });
                     }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>edit</span>
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ fontSize: "16px" }}
+                    >
+                      edit
+                    </span>
                     Chỉnh sửa thông tin
                   </button>
                   <button
@@ -183,24 +194,45 @@ const UserHoverCard = ({ user, children }) => {
                       navigate(`/profile`);
                     }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: "16px" }}>person</span>
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ fontSize: "16px" }}
+                    >
+                      person
+                    </span>
                     Xem trang cá nhân
                   </button>
                 </div>
               ) : (
                 <div style={styles.actions}>
                   {friendStatus === "friends" ? (
-                    <button style={{ ...styles.btn, ...styles.greenBtn }} disabled>
-                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>check</span>
+                    <button
+                      style={{ ...styles.btn, ...styles.greenBtn }}
+                      disabled
+                    >
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: 16 }}
+                      >
+                        check
+                      </span>
                       Bạn bè
                     </button>
                   ) : friendStatus === "pending" ? (
-                    <button style={{ ...styles.btn, ...styles.grayBtn }} disabled>
+                    <button
+                      style={{ ...styles.btn, ...styles.grayBtn }}
+                      disabled
+                    >
                       Đang chờ phê duyệt
                     </button>
                   ) : friendStatus === "sent" ? (
-                    <button 
-                      style={{ ...styles.btn, ...styles.grayBtn, cursor: "pointer", color: "#e74c3c" }} 
+                    <button
+                      style={{
+                        ...styles.btn,
+                        ...styles.grayBtn,
+                        cursor: "pointer",
+                        color: "#e74c3c",
+                      }}
                       onClick={handleWithdrawFriend}
                       disabled={sending}
                     >
@@ -212,7 +244,12 @@ const UserHoverCard = ({ user, children }) => {
                       onClick={handleAddFriend}
                       disabled={sending}
                     >
-                      <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person_add</span>
+                      <span
+                        className="material-symbols-outlined"
+                        style={{ fontSize: 16 }}
+                      >
+                        person_add
+                      </span>
                       {sending ? "Đang gửi..." : "Thêm bạn bè"}
                     </button>
                   )}
@@ -224,7 +261,12 @@ const UserHoverCard = ({ user, children }) => {
                       navigate(`/profile/${user._id}`);
                     }}
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>person</span>
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ fontSize: 16 }}
+                    >
+                      person
+                    </span>
                     Xem trang cá nhân
                   </button>
                 </div>
@@ -335,7 +377,10 @@ const styles = {
 };
 
 // Inject keyframe once
-if (typeof document !== "undefined" && !document.getElementById("hovercard-style")) {
+if (
+  typeof document !== "undefined" &&
+  !document.getElementById("hovercard-style")
+) {
   const el = document.createElement("style");
   el.id = "hovercard-style";
   el.textContent = `

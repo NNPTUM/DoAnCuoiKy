@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Comment = require("../models/comment.model");
 const Post = require("../models/post.model");
 const Reaction = require("../models/reaction.model");
+const { findCommentsByPost } = require("../utils/comment.util");
 
 // --- CHỨC NĂNG BÌNH LUẬN ---
 exports.addComment = async (req, res) => {
@@ -94,9 +95,7 @@ exports.getMyPostReactions = async (req, res) => {
 exports.getCommentsByPost = async (req, res) => {
   try {
     const { postId } = req.params;
-    const comments = await Comment.find({ postId })
-      .populate("userId", "username avatarUrl")
-      .sort({ createdAt: -1 }); // Bình luận mới nhất lên đầu
+    const comments = await findCommentsByPost(Comment, postId);
 
     res.status(200).json({ success: true, data: comments });
   } catch (error) {
@@ -112,11 +111,15 @@ exports.updateComment = async (req, res) => {
 
     const comment = await Comment.findById(commentId);
     if (!comment) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bình luận" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy bình luận" });
     }
 
     if (comment.userId.toString() !== userId) {
-      return res.status(403).json({ success: false, message: "Không có quyền sửa bình luận này" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Không có quyền sửa bình luận này" });
     }
 
     comment.content = content;
@@ -140,11 +143,15 @@ exports.deleteComment = async (req, res) => {
 
     const comment = await Comment.findById(commentId);
     if (!comment) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bình luận" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Không tìm thấy bình luận" });
     }
 
     if (comment.userId.toString() !== userId) {
-      return res.status(403).json({ success: false, message: "Không có quyền xóa bình luận này" });
+      return res
+        .status(403)
+        .json({ success: false, message: "Không có quyền xóa bình luận này" });
     }
 
     await Comment.findByIdAndDelete(commentId);

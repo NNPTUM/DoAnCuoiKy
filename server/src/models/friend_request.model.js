@@ -1,5 +1,9 @@
 // server/src/models/friend_request.model.js
 const mongoose = require("mongoose");
+const {
+  FRIEND_REQUEST_STATUS,
+  FRIEND_REQUEST_STATUS_VALUES,
+} = require("../utils/friend-request-status.util");
 
 const friendRequestSchema = new mongoose.Schema(
   {
@@ -15,8 +19,8 @@ const friendRequestSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "accepted", "declined"],
-      default: "pending",
+      enum: FRIEND_REQUEST_STATUS_VALUES,
+      default: FRIEND_REQUEST_STATUS.PENDING,
     },
   },
   { timestamps: true },

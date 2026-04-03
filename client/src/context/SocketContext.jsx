@@ -1,6 +1,13 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from "react";
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  useRef,
+} from "react";
 import { io } from "socket.io-client";
 import API from "../api/axios";
+import { getStoredUser } from "../utils/storage";
 
 const SocketContext = createContext();
 
@@ -27,7 +34,7 @@ export const SocketProvider = ({ children }) => {
   };
 
   const connectSocket = () => {
-    const currentUser = JSON.parse(localStorage.getItem("user"));
+    const currentUser = getStoredUser();
     if (!currentUser) return null;
 
     const currentUserId = currentUser.id || currentUser._id;
@@ -49,7 +56,10 @@ export const SocketProvider = ({ children }) => {
     });
 
     newSocket.on("getOnlineUsers", (users) => {
-      console.log("[Socket] 🌍 Online users:", users.map(u => u.userId));
+      console.log(
+        "[Socket] 🌍 Online users:",
+        users.map((u) => u.userId),
+      );
       setOnlineUsers(users);
     });
 
@@ -97,12 +107,26 @@ export const SocketProvider = ({ children }) => {
   }, []);
 
   return (
-    <SocketContext.Provider value={{ socket, onlineUsers, notifications, toastMessage, pendingCount, setPendingCount }}>
+    <SocketContext.Provider
+      value={{
+        socket,
+        onlineUsers,
+        notifications,
+        toastMessage,
+        pendingCount,
+        setPendingCount,
+      }}
+    >
       {children}
       {/* Toast Notification Đơn giản */}
       {toastMessage && (
         <div style={styles.toast}>
-          <span className="material-symbols-outlined" style={{ color: "#1877F2", marginRight: "8px" }}>info</span>
+          <span
+            className="material-symbols-outlined"
+            style={{ color: "#1877F2", marginRight: "8px" }}
+          >
+            info
+          </span>
           {toastMessage}
         </div>
       )}
@@ -126,5 +150,5 @@ const styles = {
     fontWeight: "bold",
     fontSize: "14px",
     animation: "slideIn 0.3s ease-out forwards",
-  }
+  },
 };

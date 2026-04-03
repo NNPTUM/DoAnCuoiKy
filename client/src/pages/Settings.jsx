@@ -4,10 +4,11 @@ import API from "../api/axios";
 import LeftSidebar from "../components/LeftSidebar";
 import TopNavbar from "../components/TopNavbar";
 import { useSocket } from "../context/SocketContext";
+import { getStoredUser } from "../utils/storage";
 
 const Settings = () => {
   const navigate = useNavigate();
-  const currentUser = JSON.parse(localStorage.getItem("user"));
+  const currentUser = getStoredUser();
   const [activeTab, setActiveTab] = useState("account");
   const { pendingCount } = useSocket();
   const [loading, setLoading] = useState(true);
@@ -131,7 +132,13 @@ const Settings = () => {
         {/* CENTER CONTENT */}
         <main style={{ flex: 1, maxWidth: "600px", paddingBottom: "40px" }}>
           <div style={styles.contentBox}>
-            <h2 style={{ fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
+            <h2
+              style={{
+                fontSize: "20px",
+                fontWeight: "bold",
+                marginBottom: "16px",
+              }}
+            >
               Cài đặt hệ thống
             </h2>
 
@@ -172,37 +179,53 @@ const Settings = () => {
             </div>
 
             {loading ? (
-              <p style={{ textAlign: "center", color: "#6c759e" }}>Đang tải cấu hình...</p>
+              <p style={{ textAlign: "center", color: "#6c759e" }}>
+                Đang tải cấu hình...
+              </p>
             ) : (
               <div>
                 {/* ACCOUNT TAB (thông tin cá nhân ở trang settings) */}
                 {activeTab === "account" && (
                   <div style={styles.section}>
                     <p style={styles.sectionDesc}>
-                      Cài đặt thông tin cá nhân hiện được quản lý tại trang <b>Hồ sơ</b> cá nhân.
+                      Cài đặt thông tin cá nhân hiện được quản lý tại trang{" "}
+                      <b>Hồ sơ</b> cá nhân.
                     </p>
                     <button
-                      onClick={() => navigate("/profile", { state: { openEdit: true } })}
+                      onClick={() =>
+                        navigate("/profile", { state: { openEdit: true } })
+                      }
                       style={styles.primaryBtn}
                     >
                       Đi tới Hồ sơ
                     </button>
-                    
+
                     <div style={{ marginTop: "32px" }}>
                       <h3 style={styles.sectionTitle}>Bảo mật tài khoản</h3>
                       <div style={styles.settingItem}>
                         <div>
                           <p style={styles.settingLabel}>Đổi mật khẩu</p>
-                          <p style={styles.settingSub}>Cập nhật mật khẩu thường xuyên để bảo mật.</p>
+                          <p style={styles.settingSub}>
+                            Cập nhật mật khẩu thường xuyên để bảo mật.
+                          </p>
                         </div>
                         <button style={styles.outlineBtn}>Cập nhật</button>
                       </div>
                       <div style={styles.settingItem}>
                         <div>
                           <p style={styles.settingLabel}>Xóa tài khoản</p>
-                          <p style={styles.settingSub}>Dữ liệu sẽ bị xóa hoàn toàn và không thể khôi phục.</p>
+                          <p style={styles.settingSub}>
+                            Dữ liệu sẽ bị xóa hoàn toàn và không thể khôi phục.
+                          </p>
                         </div>
-                        <button style={{ ...styles.outlineBtn, color: "#e74c3c", borderColor: "#fecaca", backgroundColor: "#fff5f5" }}>
+                        <button
+                          style={{
+                            ...styles.outlineBtn,
+                            color: "#e74c3c",
+                            borderColor: "#fecaca",
+                            backgroundColor: "#fff5f5",
+                          }}
+                        >
                           Xóa
                         </button>
                       </div>
@@ -214,28 +237,57 @@ const Settings = () => {
                 {activeTab === "appearance" && (
                   <div style={styles.section}>
                     <h3 style={styles.sectionTitle}>Chủ đề (Theme)</h3>
-                    <div style={{ display: "flex", gap: "16px", marginBottom: "24px" }}>
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: "16px",
+                        marginBottom: "24px",
+                      }}
+                    >
                       {[
                         { id: "light", label: "Sáng", icon: "light_mode" },
                         { id: "dark", label: "Tối", icon: "dark_mode" },
-                        { id: "system", label: "Hệ thống", icon: "desktop_windows" },
+                        {
+                          id: "system",
+                          label: "Hệ thống",
+                          icon: "desktop_windows",
+                        },
                       ].map((th) => (
                         <button
                           key={th.id}
-                          onClick={() => setSettings({ ...settings, theme: th.id })}
+                          onClick={() =>
+                            setSettings({ ...settings, theme: th.id })
+                          }
                           style={{
                             ...styles.themeCard,
-                            borderColor: settings.theme === th.id ? "#1877F2" : "#e5e7eb",
-                            backgroundColor: settings.theme === th.id ? "#f0f7ff" : "#fff",
+                            borderColor:
+                              settings.theme === th.id ? "#1877F2" : "#e5e7eb",
+                            backgroundColor:
+                              settings.theme === th.id ? "#f0f7ff" : "#fff",
                           }}
                         >
                           <span
                             className="material-symbols-outlined"
-                            style={{ color: settings.theme === th.id ? "#1877F2" : "#6c759e", fontSize: "28px", paddingBottom: "8px" }}
+                            style={{
+                              color:
+                                settings.theme === th.id
+                                  ? "#1877F2"
+                                  : "#6c759e",
+                              fontSize: "28px",
+                              paddingBottom: "8px",
+                            }}
                           >
                             {th.icon}
                           </span>
-                          <span style={{ fontWeight: 600, color: settings.theme === th.id ? "#1877F2" : "#0f1419" }}>
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              color:
+                                settings.theme === th.id
+                                  ? "#1877F2"
+                                  : "#0f1419",
+                            }}
+                          >
                             {th.label}
                           </span>
                         </button>
@@ -245,7 +297,9 @@ const Settings = () => {
                     <h3 style={styles.sectionTitle}>Ngôn ngữ (Language)</h3>
                     <select
                       value={settings.language}
-                      onChange={(e) => setSettings({ ...settings, language: e.target.value })}
+                      onChange={(e) =>
+                        setSettings({ ...settings, language: e.target.value })
+                      }
                       style={styles.selectInput}
                     >
                       <option value="vi">Tiếng Việt</option>
@@ -258,36 +312,52 @@ const Settings = () => {
                 {activeTab === "privacy" && (
                   <div style={styles.section}>
                     <h3 style={styles.sectionTitle}>Tuỳ chọn Quyền riêng tư</h3>
-                    
+
                     <div style={styles.settingItem}>
                       <div>
-                        <p style={styles.settingLabel}>Hiển thị trạng thái hoạt động</p>
-                        <p style={styles.settingSub}>Cho mọi người biết bạn đang online</p>
+                        <p style={styles.settingLabel}>
+                          Hiển thị trạng thái hoạt động
+                        </p>
+                        <p style={styles.settingSub}>
+                          Cho mọi người biết bạn đang online
+                        </p>
                       </div>
                       <Toggle
                         checked={settings.privacy.showOnlineStatus}
                         onChange={() =>
                           setSettings({
                             ...settings,
-                            privacy: { ...settings.privacy, showOnlineStatus: !settings.privacy.showOnlineStatus },
+                            privacy: {
+                              ...settings.privacy,
+                              showOnlineStatus:
+                                !settings.privacy.showOnlineStatus,
+                            },
                           })
                         }
                       />
                     </div>
-                    
+
                     <div style={styles.divider} />
-                    
+
                     <div style={styles.settingItem}>
                       <div style={{ flex: 1 }}>
-                        <p style={styles.settingLabel}>Ai có thể nhắn tin cho bạn?</p>
-                        <p style={styles.settingSub}>Quản lý những người có thể bắt đầu cuộc trò chuyện mới.</p>
+                        <p style={styles.settingLabel}>
+                          Ai có thể nhắn tin cho bạn?
+                        </p>
+                        <p style={styles.settingSub}>
+                          Quản lý những người có thể bắt đầu cuộc trò chuyện
+                          mới.
+                        </p>
                       </div>
                       <select
                         value={settings.privacy.whoCanMessageMe}
                         onChange={(e) =>
                           setSettings({
                             ...settings,
-                            privacy: { ...settings.privacy, whoCanMessageMe: e.target.value },
+                            privacy: {
+                              ...settings.privacy,
+                              whoCanMessageMe: e.target.value,
+                            },
                           })
                         }
                         style={{ ...styles.selectInput, width: "auto" }}
@@ -303,37 +373,46 @@ const Settings = () => {
                 {activeTab === "notifications" && (
                   <div style={styles.section}>
                     <h3 style={styles.sectionTitle}>Thông báo đẩy</h3>
-                    
+
                     <div style={styles.settingItem}>
                       <div>
                         <p style={styles.settingLabel}>Tin nhắn mới</p>
-                        <p style={styles.settingSub}>Nhận thông báo khi có tin nhắn trò chuyện</p>
+                        <p style={styles.settingSub}>
+                          Nhận thông báo khi có tin nhắn trò chuyện
+                        </p>
                       </div>
                       <Toggle
                         checked={settings.notifications.message}
                         onChange={() => handleToggleNotification("message")}
                       />
                     </div>
-                    
+
                     <div style={styles.divider} />
-                    
+
                     <div style={styles.settingItem}>
                       <div>
                         <p style={styles.settingLabel}>Lời mời kết bạn</p>
-                        <p style={styles.settingSub}>Nhận thông báo có người gửi kết bạn mới</p>
+                        <p style={styles.settingSub}>
+                          Nhận thông báo có người gửi kết bạn mới
+                        </p>
                       </div>
                       <Toggle
                         checked={settings.notifications.friendRequest}
-                        onChange={() => handleToggleNotification("friendRequest")}
+                        onChange={() =>
+                          handleToggleNotification("friendRequest")
+                        }
                       />
                     </div>
-                    
+
                     <div style={styles.divider} />
-                    
+
                     <div style={styles.settingItem}>
                       <div>
                         <p style={styles.settingLabel}>Tag và Nhắc đến</p>
-                        <p style={styles.settingSub}>Thông báo khi bạn được nhắc tới trong bài hoặc bình luận</p>
+                        <p style={styles.settingSub}>
+                          Thông báo khi bạn được nhắc tới trong bài hoặc bình
+                          luận
+                        </p>
                       </div>
                       <Toggle
                         checked={settings.notifications.postTags}
@@ -343,11 +422,22 @@ const Settings = () => {
                   </div>
                 )}
 
-                <div style={{ marginTop: "40px", display: "flex", justifyContent: "flex-end", borderTop: "1px solid #e5e7eb", paddingTop: "20px" }}>
+                <div
+                  style={{
+                    marginTop: "40px",
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    borderTop: "1px solid #e5e7eb",
+                    paddingTop: "20px",
+                  }}
+                >
                   <button
                     onClick={handleSaveSettings}
                     disabled={isSaving}
-                    style={{ ...styles.primaryBtn, opacity: isSaving ? 0.7 : 1 }}
+                    style={{
+                      ...styles.primaryBtn,
+                      opacity: isSaving ? 0.7 : 1,
+                    }}
                   >
                     {isSaving ? "Đang lưu..." : "Lưu thay đổi"}
                   </button>
@@ -386,10 +476,26 @@ const styles = {
     borderRadius: "999px",
     gap: "8px",
   },
-  searchInput: { background: "transparent", border: "none", outline: "none", fontSize: "14px" },
-  navAvatar: { width: "34px", height: "34px", borderRadius: "50%", objectFit: "cover" },
-  logoutBtn: { border: "none", background: "none", color: "#f44336", cursor: "pointer", fontSize: "13px" },
-  
+  searchInput: {
+    background: "transparent",
+    border: "none",
+    outline: "none",
+    fontSize: "14px",
+  },
+  navAvatar: {
+    width: "34px",
+    height: "34px",
+    borderRadius: "50%",
+    objectFit: "cover",
+  },
+  logoutBtn: {
+    border: "none",
+    background: "none",
+    color: "#f44336",
+    cursor: "pointer",
+    fontSize: "13px",
+  },
+
   mainLayout: {
     maxWidth: "1200px",
     margin: "0 auto",
@@ -409,7 +515,7 @@ const styles = {
     flexDirection: "column",
     gap: "20px",
   },
-  
+
   contentBox: {
     backgroundColor: "#fff",
     padding: "24px",
