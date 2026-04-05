@@ -17,6 +17,7 @@ const reportSchema = new mongoose.Schema(
     targetId: {
       type: mongoose.Schema.Types.ObjectId,
       required: true,
+      refPath: 'targetType',
     },
     // Lý do report
     reason: {

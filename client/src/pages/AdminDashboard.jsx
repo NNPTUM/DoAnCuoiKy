@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import API from "../api/axios";
 import DashboardTopNavbar from "../components/DashboardTopNavbar";
+import BackButton from "../components/BackButton";
 import "./dashboard.css";
 import { getStoredUser } from "../utils/storage";
 
@@ -153,6 +154,7 @@ const AdminDashboard = () => {
 
       <div className="dashboard-grid">
         <aside className="dashboard-panel dashboard-side">
+          <BackButton />
           <span className="dashboard-badge">Admin Console</span>
           <h1 className="dashboard-title">Bảng điều khiển hệ thống</h1>
           <p className="dashboard-subtitle">

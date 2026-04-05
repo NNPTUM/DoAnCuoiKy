@@ -23,6 +23,13 @@ const getReports = async (req, res) => {
     const reports = await Report.find(filter)
       .populate("reporterId", "username avatarUrl")
       .populate("resolvedBy", "username")
+      .populate({
+        path: "targetId",
+        populate: [
+          { path: "userId", select: "username avatarUrl" },
+          { path: "mediaIds" }
+        ]
+      })
       .sort({ createdAt: -1 });
 
     return res.status(200).json({ success: true, data: reports });
@@ -193,13 +200,12 @@ const submitReport = async (req, res) => {
       reporterId: req.user.id,
       targetType,
       targetId,
-      status: { $in: ["pending", "reviewing"] },
     }).select("_id");
 
     if (existingOpenReport) {
       return res.status(409).json({
         success: false,
-        message: "Bạn đã gửi báo cáo cho nội dung này và đang chờ xử lý",
+        message: "Bạn đã báo cáo nội dung này rồi. Mỗi tài khoản chỉ được báo cáo 1 lần.",
       });
     }
 
@@ -223,10 +229,24 @@ const submitReport = async (req, res) => {
   }
 };
 
+// GET /api/moderator/reports/my-reports
+// Lấy danh sách ID các bài viết mà user hiện tại đã báo cáo
+const getMyReportedTargets = async (req, res) => {
+  try {
+    const reports = await Report.find({ reporterId: req.user.id }).select("targetId");
+    const targetIds = reports.map((r) => r.targetId);
+    return res.status(200).json({ success: true, data: targetIds });
+  } catch (error) {
+    console.error("Lỗi getMyReportedTargets:", error);
+    return res.status(500).json({ success: false, message: "Lỗi server" });
+  }
+};
+
 module.exports = {
   getReports,
   updateReportStatus,
   moderatePost,
   warnUser,
   submitReport,
+  getMyReportedTargets,
 };

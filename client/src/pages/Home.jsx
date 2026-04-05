@@ -69,6 +69,21 @@ const Home = () => {
     }
   }, []);
 
+  const fetchReportedPosts = useCallback(async () => {
+    try {
+      const res = await API.get("/moderator/reports/my-reports");
+      if (res.data.success) {
+        const reportedMap = {};
+        res.data.data.forEach((targetId) => {
+          reportedMap[targetId] = true;
+        });
+        setReportedPosts(reportedMap);
+      }
+    } catch (e) {
+      console.error("Lỗi tải lịch sử báo cáo:", e);
+    }
+  }, []);
+
   const fetchPosts = useCallback(
     async ({ pageToLoad = 1, replace = false } = {}) => {
       const postsRes = await API.get("/posts", {
@@ -127,6 +142,7 @@ const Home = () => {
         await Promise.all([
           fetchPosts({ pageToLoad: 1, replace: true }),
           fetchLikedPosts(),
+          fetchReportedPosts(),
         ]);
       } catch (error) {
         console.error("Lỗi lấy bài viết:", error);
@@ -136,7 +152,7 @@ const Home = () => {
     };
 
     loadInitialFeed();
-  }, [currentUser, fetchLikedPosts, fetchPosts, navigate]);
+  }, [currentUser, fetchLikedPosts, fetchPosts, fetchReportedPosts, navigate]);
 
   useEffect(() => {
     if (loading) {
