@@ -9,6 +9,7 @@ const router = express.Router();
 
 // Route cho member thường gửi report (Ai đăng nhập cũng gửi được)
 router.post("/reports/submit", verifyToken, moderatorController.submitReport);
+router.get("/reports/my-reports", verifyToken, moderatorController.getMyReportedTargets);
 
 // Các route thực thi quyền kiểm duyệt (Cả Admin và Moderator đều có quyền)
 router.use(verifyToken);

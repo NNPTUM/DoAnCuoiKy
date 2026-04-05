@@ -146,11 +146,12 @@ const Settings = () => {
             <div
               style={{
                 display: "flex",
-                gap: "12px",
+                gap: "8px",
                 marginBottom: "24px",
                 borderBottom: "1px solid #eff3f4",
                 paddingBottom: "12px",
-                overflowX: "auto",
+                flexWrap: "wrap",
+                justifyContent: "space-between",
               }}
             >
               {[
@@ -163,14 +164,16 @@ const Settings = () => {
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   style={{
+                    flex: 1,
+                    minWidth: "110px",
                     background: activeTab === tab.id ? "#e7f3ff" : "none",
                     color: activeTab === tab.id ? "#1877F2" : "#6c759e",
                     border: "none",
-                    padding: "8px 16px",
-                    borderRadius: "20px",
+                    padding: "8px 6px",
+                    borderRadius: "8px",
                     fontWeight: activeTab === tab.id ? "700" : "600",
                     cursor: "pointer",
-                    whiteSpace: "nowrap",
+                    textAlign: "center",
                   }}
                 >
                   {tab.name}

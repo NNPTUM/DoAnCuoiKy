@@ -1,15 +1,23 @@
 import React, { useEffect, useState } from "react";
 import API from "../../api/axios";
+import BackButton from "../../components/BackButton";
 import "../dashboard.css";
+
+const REASON_TRANSLATIONS = {
+  spam: "Spam / Thư rác",
+  hate_speech: "Ngôn từ thù ghét",
+  nudity: "Khỏa thân / Nội dung khiêu dâm",
+  violence: "Bạo lực",
+  harassment: "Quấy rối, bắt nạt",
+  false_information: "Thông tin sai lệch",
+  other: "Khác",
+};
 
 const ModeratorReportsPage = () => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("pending");
   const [message, setMessage] = useState("");
-  const [manualPostId, setManualPostId] = useState("");
-  const [manualTags, setManualTags] = useState("");
-  const [manualUserId, setManualUserId] = useState("");
 
   const loadReports = async () => {
     try {
@@ -34,15 +42,26 @@ const ModeratorReportsPage = () => {
 
   const updateReport = async (reportId, status) => {
     try {
+      let resolutionNote = `Moderator chuyển trạng thái sang ${status}`;
+      
+      // Cho phép người kiểm duyệt nhập ghi chú nếu chuyển thành resolved/dismissed
+      if (status === "resolved" || status === "dismissed") {
+        const userInput = window.prompt(
+          `Nhập ghi chú xử lý cho trạng thái "${status}" (tùy chọn):`,
+          resolutionNote
+        );
+        if (userInput === null) return; // Người dùng ấn Cancel thì hủy thao tác
+        resolutionNote = userInput.trim() || resolutionNote;
+      }
+
       const res = await API.put(`/moderator/reports/${reportId}`, {
         status,
-        resolutionNote: `Moderator chuyển trạng thái sang ${status}`,
+        resolutionNote,
       });
 
       if (res.data?.success) {
-        setReports((prev) =>
-          prev.map((r) => (r._id === reportId ? { ...r, status } : r)),
-        );
+        setMessage(`Đã cập nhật trạng thái báo cáo thành ${status}`);
+        loadReports(); // Tải lại danh sách để lấy thông tin populated (resolvedBy) mới nhất
       }
     } catch (error) {
       setMessage(
@@ -79,6 +98,7 @@ const ModeratorReportsPage = () => {
 
   return (
     <section className="dashboard-panel dashboard-content-card">
+      <BackButton label="Trở về trang trước" />
       <div className="section-row">
         <h2 className="section-title">Reports</h2>
         <button className="ghost-btn" onClick={loadReports}>
@@ -130,18 +150,65 @@ const ModeratorReportsPage = () => {
         {reports.map((report) => (
           <article key={report._id} className="report-card">
             <div className="report-meta">
-              <span className="meta-pill">Type: {report.targetType}</span>
-              <span className="meta-pill">Reason: {report.reason}</span>
-              <span className="meta-pill">Status: {report.status}</span>
+              <span className="meta-pill">Loại: {report.targetType}</span>
+              <span className="meta-pill">Lý do: {REASON_TRANSLATIONS[report.reason] || report.reason}</span>
+              <span className="meta-pill">Trạng thái: {report.status}</span>
             </div>
 
-            <div style={{ fontSize: 14 }}>
-              <strong>Target ID:</strong> {report.targetId}
+            {/* Hiển thị thông tin người tố cáo và thời gian */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0 10px' }}>
+              {report.reporterId?.avatarUrl ? (
+                <img src={report.reporterId.avatarUrl} alt="avatar" style={{width: 36, height: 36, borderRadius: '50%', objectFit: 'cover'}} />
+              ) : (
+                <div style={{width: 36, height: 36, borderRadius: '50%', backgroundColor: '#ccd1d9', flexShrink: 0}} />
+              )}
+              <div>
+                <div style={{fontSize: 14, fontWeight: 600, color: '#333'}}>
+                  {report.reporterId?.username || 'Người dùng ẩn danh'}
+                  {report.reporterId?._id && <span style={{fontSize: 12, color: '#888', marginLeft: 6}}>(ID: {report.reporterId._id})</span>}
+                </div>
+                <div style={{fontSize: 12, color: '#666'}}>
+                  {new Date(report.createdAt).toLocaleString('vi-VN')}
+                </div>
+              </div>
             </div>
+
+            <div style={{ fontSize: 14, marginBottom: 8, color: '#444' }}>
+              <strong>Target ID:</strong> {report.targetId?._id || report.targetId}
+            </div>
+
+            {/* Hiển thị chi tiết nội dung bị báo cáo (nếu là bài viết) */}
+            {report.targetType === "Post" && (report.targetId?.content || (report.targetId?.mediaIds && report.targetId.mediaIds.length > 0)) && (
+              <div style={{ fontSize: 14, color: "#333", padding: '12px', backgroundColor: '#fdfdfd', border: '1px solid #e0e0e0', borderRadius: 6, marginBottom: 8 }}>
+                <div style={{ fontWeight: 600, marginBottom: 6, color: '#174581' }}>
+                  Nội dung bài viết bị báo cáo (Đăng bởi: {report.targetId.userId?.username || 'Ẩn danh'} - ID: {report.targetId.userId?._id}):
+                </div>
+                {report.targetId.content && (
+                  <div style={{ fontStyle: 'italic', wordBreak: 'break-word', borderLeft: '3px solid #ccc', paddingLeft: 8, marginBottom: '8px' }}>
+                    "{report.targetId.content}"
+                  </div>
+                )}
+                {report.targetId?.mediaIds?.length > 0 && (
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '10px' }}>
+                    {report.targetId.mediaIds.map((media, idx) => (
+                      <img key={media._id || idx} src={media.url} alt="Post media" style={{ width: '120px', height: '120px', objectFit: 'cover', borderRadius: '8px', border: '1px solid #e0e0e0' }} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {report.description && (
-              <div style={{ fontSize: 14, color: "#334d73" }}>
-                {report.description}
+              <div style={{ fontSize: 14, color: "#334d73", padding: '10px', backgroundColor: '#f0f4f8', borderRadius: 6, marginBottom: 8 }}>
+                <strong>Mô tả vi phạm: </strong> {report.description}
+              </div>
+            )}
+
+            {/* Hiển thị ghi chú của kiểm duyệt viên */}
+            {report.resolutionNote && (
+              <div style={{ fontSize: 13, color: "#2E7D32", padding: '8px 10px', backgroundColor: '#E8F5E9', borderLeft: '3px solid #2E7D32', borderRadius: '0 6px 6px 0', marginBottom: 12 }}>
+                <strong>Ghi chú xử lý: </strong> {report.resolutionNote} 
+                {report.resolvedBy?.username && ` (Bởi: ${report.resolvedBy.username})`}
               </div>
             )}
 
@@ -166,38 +233,64 @@ const ModeratorReportsPage = () => {
               </button>
 
               {report.targetType === "Post" && (
-                <>
+                <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", width: "100%", paddingLeft: 10, borderLeft: "2px solid #ddd" }}>
                   <button
                     className="danger-btn"
                     onClick={() =>
                       moderatePost(
-                        report.targetId,
+                        report.targetId?._id || report.targetId,
                         { status: "hidden" },
                         "Đã ẩn bài viết vi phạm",
                       )
                     }
                   >
-                    Ẩn bài viết
+                    Ẩn (Hidden)
+                  </button>
+                  <button
+                    className="danger-btn"
+                    style={{ backgroundColor: '#d32f2f', color: '#ffffff' }}
+                    onClick={() =>
+                      moderatePost(
+                        report.targetId?._id || report.targetId,
+                        { status: "deleted" },
+                        "Đã xóa bài viết vi phạm vĩnh viễn",
+                      )
+                    }
+                  >
+                    Xóa (Deleted)
+                  </button>
+                  <button
+                    className="ghost-btn"
+                    style={{ borderColor: '#2E7D32', color: '#2E7D32' }}
+                    onClick={() =>
+                      moderatePost(
+                        report.targetId?._id || report.targetId,
+                        { status: "active" },
+                        "Đã khôi phục bài viết (Active)",
+                      )
+                    }
+                  >
+                    Khôi phục (Active)
                   </button>
                   <button
                     className="tag-btn"
                     onClick={() =>
                       moderatePost(
-                        report.targetId,
+                        report.targetId?._id || report.targetId,
                         { isPinned: true },
                         "Đã ghim bài viết",
                       )
                     }
                   >
-                    Ghim bài viết
+                    Ghim bài
                   </button>
-                </>
+                </div>
               )}
 
               {report.targetType === "User" && (
                 <button
                   className="danger-btn"
-                  onClick={() => warnUser(report.targetId)}
+                  onClick={() => warnUser(report.targetId?._id || report.targetId)}
                 >
                   Cảnh cáo user bị report
                 </button>
@@ -207,85 +300,7 @@ const ModeratorReportsPage = () => {
         ))}
       </div>
 
-      <section
-        className="dashboard-panel"
-        style={{ padding: 12, borderRadius: 12, marginTop: 12 }}
-      >
-        <h3 className="section-title" style={{ marginBottom: 10 }}>
-          Công cụ kiểm duyệt thủ công
-        </h3>
 
-        <div style={{ display: "grid", gap: 10 }}>
-          <label>
-            Post ID
-            <input
-              placeholder="Nhập post id"
-              value={manualPostId}
-              onChange={(e) => setManualPostId(e.target.value)}
-            />
-          </label>
-
-          <label>
-            Tags (phân cách bằng dấu phẩy)
-            <input
-              placeholder="news, community, announcement"
-              value={manualTags}
-              onChange={(e) => setManualTags(e.target.value)}
-            />
-          </label>
-
-          <div className="inline-actions">
-            <button
-              className="danger-btn"
-              onClick={() =>
-                moderatePost(
-                  manualPostId,
-                  { status: "hidden" },
-                  "Đã ẩn bài viết theo thao tác thủ công",
-                )
-              }
-              disabled={!manualPostId.trim()}
-            >
-              Ẩn post theo ID
-            </button>
-            <button
-              className="tag-btn"
-              onClick={() =>
-                moderatePost(
-                  manualPostId,
-                  {
-                    tags: manualTags
-                      .split(",")
-                      .map((tag) => tag.trim())
-                      .filter(Boolean),
-                  },
-                  "Đã gán tag cho bài viết",
-                )
-              }
-              disabled={!manualPostId.trim()}
-            >
-              Gán tags cho post
-            </button>
-          </div>
-
-          <label>
-            User ID cần cảnh cáo
-            <input
-              placeholder="Nhập user id"
-              value={manualUserId}
-              onChange={(e) => setManualUserId(e.target.value)}
-            />
-          </label>
-
-          <button
-            className="primary-btn"
-            onClick={() => warnUser(manualUserId)}
-            disabled={!manualUserId.trim()}
-          >
-            Cảnh cáo user theo ID
-          </button>
-        </div>
-      </section>
 
       {message && (
         <p className="helper-text" style={{ marginTop: 10 }}>

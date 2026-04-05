@@ -1,6 +1,6 @@
-import React from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import DashboardTopNavbar from "../../components/DashboardTopNavbar";
+import BackButton from "../../components/BackButton";
 import "../dashboard.css";
 
 const AdminLayout = () => {
@@ -10,7 +10,8 @@ const AdminLayout = () => {
 
       <div className="dashboard-grid">
         <aside className="dashboard-panel dashboard-side">
-          <span className="dashboard-badge">Admin Console</span>
+          <BackButton />
+          <span className="dashboard-badge">Admin Dashboard</span>
           <h1 className="dashboard-title">Quản trị hệ thống</h1>
           <p className="dashboard-subtitle">
             Chia nhỏ theo module để dễ mở rộng production và phân quyền theo

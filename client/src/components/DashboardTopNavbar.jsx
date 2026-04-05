@@ -8,8 +8,8 @@ const DashboardTopNavbar = ({ role = "admin" }) => {
 
   return (
     <TopNavbar
-      brandLabel={isAdmin ? "Admin Console" : "Moderator Hub"}
-      homePath={isAdmin ? "/admin" : "/moderator"}
+      brandLabel={isAdmin ? "Social Web" : "Social Web"}
+      homePath={isAdmin ? "/" : "/"}
       profilePath="/profile"
       notificationsPath="/friends"
       showSearch={false}
