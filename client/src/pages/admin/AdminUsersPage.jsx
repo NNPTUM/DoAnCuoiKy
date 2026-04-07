@@ -1,24 +1,20 @@
-import React, { useEffect, useMemo, useState } from "react";
-import API from "../../api/axios";
+import React, { useEffect, useMemo } from "react";
 import "../dashboard.css";
-
-const getStoredUser = () => {
-  try {
-    const raw = localStorage.getItem("user");
-    return raw ? JSON.parse(raw) : {};
-  } catch (error) {
-    return {};
-  }
-};
-
-const roleName = (user) =>
-  user?.roleId?.name || user?.roleName || user?.role || "user";
+import { getCurrentUser, getCurrentUserId } from "../../utils/authUser";
+import { roleName } from "../../utils/role";
+import { useAdminUsers } from "../../hooks/useAdminUsers";
 
 const AdminUsersPage = () => {
-  const currentUser = getStoredUser();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
+  const currentUser = getCurrentUser({});
+  const currentUserId = getCurrentUserId(currentUser);
+  const {
+    users,
+    loading,
+    message,
+    refreshUsers,
+    handleRoleChange,
+    handleDeleteUser,
+  } = useAdminUsers();
 
   const stats = useMemo(() => {
     return {
@@ -29,71 +25,15 @@ const AdminUsersPage = () => {
     };
   }, [users]);
 
-  const fetchUsers = async () => {
-    try {
-      setLoading(true);
-      const res = await API.get("/admin/users?limit=100");
-      if (res.data?.success && Array.isArray(res.data?.data)) {
-        setUsers(res.data.data);
-      }
-    } catch (error) {
-      setMessage(
-        error.response?.data?.message || "Không thể tải danh sách người dùng",
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchUsers();
-  }, []);
-
-  const handleRoleChange = async (userId, nextRole) => {
-    try {
-      const res = await API.put(`/admin/users/${userId}/role`, {
-        roleName: nextRole,
-      });
-      if (res.data?.success) {
-        setUsers((prev) =>
-          prev.map((user) =>
-            user._id === userId
-              ? {
-                  ...user,
-                  roleId: {
-                    ...(typeof user.roleId === "object" ? user.roleId : {}),
-                    name: nextRole,
-                  },
-                }
-              : user,
-          ),
-        );
-      }
-    } catch (error) {
-      setMessage(error.response?.data?.message || "Không thể đổi role");
-    }
-  };
-
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm("Bạn chắc chắn muốn xóa vĩnh viễn tài khoản này?")) {
-      return;
-    }
-
-    try {
-      const res = await API.delete(`/admin/users/${userId}`);
-      if (res.data?.success) {
-        setUsers((prev) => prev.filter((user) => user._id !== userId));
-      }
-    } catch (error) {
-      setMessage(error.response?.data?.message || "Xóa người dùng thất bại");
-    }
-  };
+    refreshUsers();
+  }, [refreshUsers]);
 
   return (
     <section className="dashboard-panel dashboard-content-card">
       <div className="section-row">
         <h2 className="section-title">Users</h2>
-        <button className="ghost-btn" onClick={fetchUsers}>
+        <button className="ghost-btn" onClick={refreshUsers}>
           Tải lại
         </button>
       </div>
@@ -130,8 +70,7 @@ const AdminUsersPage = () => {
             <tbody>
               {users.map((user) => {
                 const userRole = roleName(user);
-                const isCurrentUser =
-                  user._id === currentUser?._id || user._id === currentUser?.id;
+                const isCurrentUser = user._id === currentUserId;
                 return (
                   <tr key={user._id}>
                     <td>{user.username}</td>

@@ -13,6 +13,8 @@ import LeftSidebar from "../components/LeftSidebar";
 import TopNavbar from "../components/TopNavbar";
 import { useSocket } from "../context/SocketContext";
 import { getStoredUser } from "../utils/storage";
+import { uploadImage } from "../services/upload.service";
+import { usePostInteractions } from "../hooks/usePostInteractions";
 
 const formatAlgorithmLabel = (algorithm) => {
   if (algorithm === "engagement") return "Engagement";
@@ -40,10 +42,8 @@ const Home = () => {
   const [editingPostId, setEditingPostId] = useState(null);
   const [editingContent, setEditingContent] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
-  const [likedPosts, setLikedPosts] = useState({});
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
-  const [isUpdatingComment, setIsUpdatingComment] = useState(false);
   const [activeDropdownCommentId, setActiveDropdownCommentId] = useState(null);
   const [feedMeta, setFeedMeta] = useState(null);
   const [reportedPosts, setReportedPosts] = useState({});
@@ -56,18 +56,21 @@ const Home = () => {
   const navigate = useNavigate();
   const currentUser = useMemo(() => getStoredUser(), []);
   const currentUserId = currentUser?._id || currentUser?.id;
-
-  // Kiểm tra đăng nhập khi vào trang
-  const fetchLikedPosts = useCallback(async () => {
-    const reactionsRes = await API.get("/posts/reactions/my-posts");
-    if (reactionsRes.data.success) {
-      const likedMap = {};
-      reactionsRes.data.data.forEach((postId) => {
-        likedMap[postId] = true;
-      });
-      setLikedPosts(likedMap);
-    }
-  }, []);
+  const {
+    likedPosts,
+    refreshLikedPosts,
+    handleLike,
+    commentInputs,
+    setCommentInput,
+    postComments,
+    activeCommentPostId,
+    setActiveCommentPostId,
+    openCommentModal,
+    handleComment,
+    handleUpdateComment,
+    handleDeleteComment,
+    isUpdatingComment,
+  } = usePostInteractions({ setPosts });
 
   const fetchReportedPosts = useCallback(async () => {
     try {
@@ -141,7 +144,7 @@ const Home = () => {
         setLoading(true);
         await Promise.all([
           fetchPosts({ pageToLoad: 1, replace: true }),
-          fetchLikedPosts(),
+          refreshLikedPosts(),
           fetchReportedPosts(),
         ]);
       } catch (error) {
@@ -152,7 +155,13 @@ const Home = () => {
     };
 
     loadInitialFeed();
-  }, [currentUser, fetchLikedPosts, fetchPosts, fetchReportedPosts, navigate]);
+  }, [
+    currentUser,
+    fetchPosts,
+    fetchReportedPosts,
+    navigate,
+    refreshLikedPosts,
+  ]);
 
   useEffect(() => {
     if (loading) {
@@ -196,11 +205,7 @@ const Home = () => {
       // 1. Nếu có ảnh, upload ảnh trước để lấy URL và publicId
       if (selectedImages.length > 0) {
         const uploadPromises = selectedImages.map(async (file) => {
-          const formData = new FormData();
-          formData.append("image", file);
-          const res = await API.post("/upload/image", formData, {
-            headers: { "Content-Type": "multipart/form-data" },
-          });
+          const res = await uploadImage(file, "posts");
           if (res.data.success) {
             return {
               url: res.data.imageUrl,
@@ -274,94 +279,6 @@ const Home = () => {
     }
   };
 
-  // Hàm xử lý Like
-  const handleLike = async (postId) => {
-    try {
-      const response = await API.post(`/posts/${postId}/react`, {
-        targetModel: "Post",
-        type: "like",
-      });
-      if (response.data.success) {
-        // Cập nhật lại số lượng like trên giao diện dựa trên isReacted
-        setPosts((prevPosts) =>
-          prevPosts.map((p) => {
-            if (p._id === postId) {
-              return {
-                ...p,
-                reactionCount: response.data.isReacted
-                  ? p.reactionCount + 1
-                  : Math.max(0, p.reactionCount - 1),
-              };
-            }
-            return p;
-          }),
-        );
-        // Cập nhật trạng thái liked
-        setLikedPosts((prev) => ({
-          ...prev,
-          [postId]: response.data.isReacted,
-        }));
-      }
-    } catch (error) {
-      console.error("Like error", error);
-    }
-  };
-
-  const [commentInputs, setCommentInputs] = useState({});
-  const [postComments, setPostComments] = useState({}); // Lưu: { [postId]: [array_comments] }
-  const [activeCommentPostId, setActiveCommentPostId] = useState(null); // Lưu: id bài viết đang mở popup bình luận
-
-  // Hàm xử lý Comment
-  const handleComment = async (postId) => {
-    const text = commentInputs[postId];
-    if (!text?.trim()) return;
-
-    try {
-      const response = await API.post(`/posts/${postId}/comments`, {
-        content: text,
-      });
-
-      if (response.data.success) {
-        const newComment = response.data.data; // Lấy dữ liệu comment mới từ Backend
-
-        // 1. Cập nhật số lượng comment trong danh sách Post
-        setPosts((prevPosts) =>
-          prevPosts.map((p) =>
-            p._id === postId ? { ...p, commentCount: p.commentCount + 1 } : p,
-          ),
-        );
-
-        // 2. Đẩy comment mới vào đầu danh sách comment đang hiển thị của Post đó
-        setPostComments((prev) => ({
-          ...prev,
-          [postId]: [newComment, ...(prev[postId] || [])],
-        }));
-
-        // 3. Mở popup bình luận
-        setActiveCommentPostId(postId);
-
-        // 4. Xóa trắng ô nhập
-        setCommentInputs({ ...commentInputs, [postId]: "" });
-      }
-    } catch (error) {
-      console.error("Comment error", error);
-      alert("Không thể gửi bình luận lúc này.");
-    }
-  };
-
-  const openCommentModal = async (postId) => {
-    setActiveCommentPostId(postId);
-    // Nếu chưa có dữ liệu hoặc muốn cập nhật mới thì gọi API
-    try {
-      const response = await API.get(`/posts/${postId}/comments`);
-      if (response.data.success) {
-        setPostComments((prev) => ({ ...prev, [postId]: response.data.data }));
-      }
-    } catch (error) {
-      console.error("Lỗi lấy bình luận:", error);
-    }
-  };
-
   const closeCommentModal = () => {
     setActiveCommentPostId(null);
   };
@@ -414,58 +331,6 @@ const Home = () => {
   const cancelEditingComment = () => {
     setEditingCommentId(null);
     setEditingCommentContent("");
-  };
-
-  const handleUpdateComment = async (postId, commentId) => {
-    if (!editingCommentContent.trim()) {
-      alert("Nội dung không được để trống");
-      return;
-    }
-    setIsUpdatingComment(true);
-    try {
-      const response = await API.put(`/posts/${postId}/comments/${commentId}`, {
-        content: editingCommentContent,
-      });
-      if (response.data.success) {
-        const updatedComment = response.data.data;
-        setPostComments((prev) => ({
-          ...prev,
-          [postId]: prev[postId].map((c) =>
-            c._id === commentId ? updatedComment : c,
-          ),
-        }));
-        cancelEditingComment();
-      }
-    } catch (error) {
-      alert("Sửa bình luận thất bại: " + (error.response?.data?.message || ""));
-    } finally {
-      setIsUpdatingComment(false);
-    }
-  };
-
-  const handleDeleteComment = async (postId, commentId) => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa bình luận này?")) {
-      try {
-        const response = await API.delete(
-          `/posts/${postId}/comments/${commentId}`,
-        );
-        if (response.data.success) {
-          setPostComments((prev) => ({
-            ...prev,
-            [postId]: prev[postId].filter((c) => c._id !== commentId),
-          }));
-          setPosts((prevPosts) =>
-            prevPosts.map((p) =>
-              p._id === postId
-                ? { ...p, commentCount: Math.max(0, p.commentCount - 1) }
-                : p,
-            ),
-          );
-        }
-      } catch (error) {
-        alert("Xóa bình luận thất bại!");
-      }
-    }
   };
 
   const handleReportPost = async (post) => {
@@ -1048,6 +913,8 @@ const Home = () => {
                                 handleUpdateComment(
                                   activeCommentPostId,
                                   comment._id,
+                                  editingCommentContent,
+                                  cancelEditingComment,
                                 )
                               }
                               disabled={
@@ -1096,10 +963,7 @@ const Home = () => {
                 placeholder="Viết bình luận..."
                 value={commentInputs[activeCommentPostId] || ""}
                 onChange={(e) =>
-                  setCommentInputs({
-                    ...commentInputs,
-                    [activeCommentPostId]: e.target.value,
-                  })
+                  setCommentInput(activeCommentPostId, e.target.value)
                 }
                 style={styles.modalCommentInput}
               />

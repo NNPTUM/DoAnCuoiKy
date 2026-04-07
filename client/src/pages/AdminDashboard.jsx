@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import API from "../api/axios";
 import DashboardTopNavbar from "../components/DashboardTopNavbar";
 import BackButton from "../components/BackButton";
 import "./dashboard.css";
 import { getStoredUser } from "../utils/storage";
+import { roleName } from "../utils/role";
+import { getSettings, updateSettings } from "../services/admin.service";
+import { useAdminUsers } from "../hooks/useAdminUsers";
 
 const initialSettings = {
   features: {
@@ -20,15 +22,19 @@ const initialSettings = {
   },
 };
 
-const roleName = (user) =>
-  user?.roleId?.name || user?.roleName || user?.role || "user";
-
 const AdminDashboard = () => {
   const [settings, setSettings] = useState(initialSettings);
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [isSettingsLoading, setIsSettingsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const {
+    users,
+    loading: isUsersLoading,
+    message: userMessage,
+    refreshUsers,
+    handleRoleChange,
+    handleDeleteUser,
+  } = useAdminUsers();
 
   const currentUser = getStoredUser({});
 
@@ -45,25 +51,21 @@ const AdminDashboard = () => {
 
   const fetchBootstrap = async () => {
     try {
-      setLoading(true);
-      const [settingsRes, usersRes] = await Promise.all([
-        API.get("/admin/settings"),
-        API.get("/admin/users?limit=100"),
+      setIsSettingsLoading(true);
+      const [settingsRes] = await Promise.all([
+        getSettings(),
+        refreshUsers(100),
       ]);
 
       if (settingsRes.data?.success && settingsRes.data?.data) {
         setSettings((prev) => ({ ...prev, ...settingsRes.data.data }));
-      }
-
-      if (usersRes.data?.success && Array.isArray(usersRes.data?.data)) {
-        setUsers(usersRes.data.data);
       }
     } catch (error) {
       setMessage(
         error.response?.data?.message || "Không thể tải dữ liệu Admin",
       );
     } finally {
-      setLoading(false);
+      setIsSettingsLoading(false);
     }
   };
 
@@ -85,7 +87,7 @@ const AdminDashboard = () => {
     try {
       setSaving(true);
       setMessage("");
-      const res = await API.put("/admin/settings", settings);
+      const res = await updateSettings(settings);
       if (res.data?.success) {
         setMessage("Đã lưu cấu hình hệ thống thành công.");
       }
@@ -96,46 +98,7 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleRoleChange = async (userId, nextRole) => {
-    try {
-      const res = await API.put(`/admin/users/${userId}/role`, {
-        roleName: nextRole,
-      });
-
-      if (res.data?.success) {
-        setUsers((prev) =>
-          prev.map((user) =>
-            user._id === userId
-              ? {
-                  ...user,
-                  roleId: {
-                    ...(typeof user.roleId === "object" ? user.roleId : {}),
-                    name: nextRole,
-                  },
-                }
-              : user,
-          ),
-        );
-      }
-    } catch (error) {
-      setMessage(error.response?.data?.message || "Không thể đổi role");
-    }
-  };
-
-  const handleDeleteUser = async (userId) => {
-    if (!window.confirm("Bạn chắc chắn muốn xóa vĩnh viễn tài khoản này?")) {
-      return;
-    }
-
-    try {
-      const res = await API.delete(`/admin/users/${userId}`);
-      if (res.data?.success) {
-        setUsers((prev) => prev.filter((user) => user._id !== userId));
-      }
-    } catch (error) {
-      setMessage(error.response?.data?.message || "Xóa người dùng thất bại");
-    }
-  };
+  const loading = isSettingsLoading || isUsersLoading;
 
   if (loading) {
     return (
@@ -346,7 +309,7 @@ const AdminDashboard = () => {
             </div>
           </section>
 
-          {message && (
+          {(message || userMessage) && (
             <div
               style={{
                 background: "#edf8ff",
@@ -357,7 +320,7 @@ const AdminDashboard = () => {
                 fontWeight: 600,
               }}
             >
-              {message}
+              {message || userMessage}
             </div>
           )}
         </main>

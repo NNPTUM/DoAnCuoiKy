@@ -14,6 +14,7 @@ const settingRoutes = require("./src/routes/setting.route");
 const adminRoutes = require("./src/routes/admin.route");
 const moderatorRoutes = require("./src/routes/moderator.route");
 const { initSocket } = require("./src/socket/socket");
+const { errorHandler } = require("./src/middlewares/error.middleware");
 require("./src/models");
 
 // Khởi tạo app Express
@@ -40,6 +41,8 @@ app.get("/", (req, res) => {
     message: "Chào mừng đến với Backend Mạng Xã Hội Chat Real-time!",
   });
 });
+
+app.use(errorHandler);
 
 initSocket(server);
 

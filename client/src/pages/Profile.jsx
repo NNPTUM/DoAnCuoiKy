@@ -6,11 +6,12 @@ import LeftSidebar from "../components/LeftSidebar";
 import TopNavbar from "../components/TopNavbar";
 import { useSocket } from "../context/SocketContext";
 import { getStoredUser } from "../utils/storage";
+import { uploadImage } from "../services/upload.service";
+import { usePostInteractions } from "../hooks/usePostInteractions";
 
 const Profile = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [likedPosts, setLikedPosts] = useState({});
   const [editingPostId, setEditingPostId] = useState(null);
   const [editingContent, setEditingContent] = useState("");
   const [isUpdating, setIsUpdating] = useState(false);
@@ -25,15 +26,26 @@ const Profile = () => {
   const { pendingCount } = useSocket();
 
   // Comment states
-  const [commentInputs, setCommentInputs] = useState({});
-  const [postComments, setPostComments] = useState({});
-  const [activeCommentPostId, setActiveCommentPostId] = useState(null);
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
-  const [isUpdatingComment, setIsUpdatingComment] = useState(false);
   const [activeDropdownCommentId, setActiveDropdownCommentId] = useState(null);
 
   const currentUserId = profileData?._id;
+  const {
+    likedPosts,
+    refreshLikedPosts,
+    handleLike,
+    commentInputs,
+    setCommentInput,
+    postComments,
+    activeCommentPostId,
+    setActiveCommentPostId,
+    openCommentModal,
+    handleComment,
+    handleUpdateComment,
+    handleDeleteComment,
+    isUpdatingComment,
+  } = usePostInteractions({ setPosts });
 
   useEffect(() => {
     if (!profileData) {
@@ -46,10 +58,10 @@ const Profile = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [profileRes, postsRes, reactionsRes] = await Promise.all([
+      const [profileRes, postsRes] = await Promise.all([
         API.get("/auth/me"),
         API.get("/posts/me"),
-        API.get("/posts/reactions/my-posts"),
+        refreshLikedPosts(),
       ]);
 
       if (profileRes.data.success) {
@@ -62,14 +74,6 @@ const Profile = () => {
 
       if (postsRes.data.success) {
         setPosts(postsRes.data.data);
-      }
-
-      if (reactionsRes.data.success) {
-        const likedMap = {};
-        reactionsRes.data.data.forEach((postId) => {
-          likedMap[postId] = true;
-        });
-        setLikedPosts(likedMap);
       }
     } catch (error) {
       console.error("Lỗi lấy dữ liệu:", error);
@@ -101,11 +105,7 @@ const Profile = () => {
       let newAvatarUrl = profileData.avatarUrl;
 
       if (selectedAvatarFile) {
-        const formData = new FormData();
-        formData.append("image", selectedAvatarFile);
-        const res = await API.post("/upload/image", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-        });
+        const res = await uploadImage(selectedAvatarFile, "profile");
         if (res.data.success) {
           newAvatarUrl = res.data.imageUrl;
         } else {
@@ -135,36 +135,6 @@ const Profile = () => {
       );
     } finally {
       setIsSavingProfile(false);
-    }
-  };
-
-  const handleLike = async (postId) => {
-    try {
-      const response = await API.post(`/posts/${postId}/react`, {
-        targetModel: "Post",
-        type: "like",
-      });
-      if (response.data.success) {
-        setPosts((prevPosts) =>
-          prevPosts.map((p) => {
-            if (p._id === postId) {
-              return {
-                ...p,
-                reactionCount: response.data.isReacted
-                  ? p.reactionCount + 1
-                  : Math.max(0, p.reactionCount - 1),
-              };
-            }
-            return p;
-          }),
-        );
-        setLikedPosts((prev) => ({
-          ...prev,
-          [postId]: response.data.isReacted,
-        }));
-      }
-    } catch (error) {
-      console.error("Like error", error);
     }
   };
 
@@ -224,51 +194,6 @@ const Profile = () => {
     }
   };
 
-  // Comment handlers
-  const handleComment = async (postId) => {
-    const text = commentInputs[postId];
-    if (!text?.trim()) return;
-
-    try {
-      const response = await API.post(`/posts/${postId}/comments`, {
-        content: text,
-      });
-
-      if (response.data.success) {
-        const newComment = response.data.data;
-
-        setPosts((prevPosts) =>
-          prevPosts.map((p) =>
-            p._id === postId ? { ...p, commentCount: p.commentCount + 1 } : p,
-          ),
-        );
-
-        setPostComments((prev) => ({
-          ...prev,
-          [postId]: [newComment, ...(prev[postId] || [])],
-        }));
-
-        setActiveCommentPostId(postId);
-        setCommentInputs({ ...commentInputs, [postId]: "" });
-      }
-    } catch (error) {
-      console.error("Comment error", error);
-      alert("Không thể gửi bình luận lúc này.");
-    }
-  };
-
-  const openCommentModal = async (postId) => {
-    setActiveCommentPostId(postId);
-    try {
-      const response = await API.get(`/posts/${postId}/comments`);
-      if (response.data.success) {
-        setPostComments((prev) => ({ ...prev, [postId]: response.data.data }));
-      }
-    } catch (error) {
-      console.error("Lỗi lấy bình luận:", error);
-    }
-  };
-
   const closeCommentModal = () => {
     setActiveCommentPostId(null);
     setActiveDropdownCommentId(null);
@@ -285,58 +210,6 @@ const Profile = () => {
   const cancelEditingComment = () => {
     setEditingCommentId(null);
     setEditingCommentContent("");
-  };
-
-  const handleUpdateComment = async (postId, commentId) => {
-    if (!editingCommentContent.trim()) {
-      alert("Nội dung không được để trống");
-      return;
-    }
-    setIsUpdatingComment(true);
-    try {
-      const response = await API.put(`/posts/${postId}/comments/${commentId}`, {
-        content: editingCommentContent,
-      });
-      if (response.data.success) {
-        const updatedComment = response.data.data;
-        setPostComments((prev) => ({
-          ...prev,
-          [postId]: prev[postId].map((c) =>
-            c._id === commentId ? updatedComment : c,
-          ),
-        }));
-        cancelEditingComment();
-      }
-    } catch (error) {
-      alert("Sửa bình luận thất bại: " + (error.response?.data?.message || ""));
-    } finally {
-      setIsUpdatingComment(false);
-    }
-  };
-
-  const handleDeleteComment = async (postId, commentId) => {
-    if (window.confirm("Bạn có chắc chắn muốn xóa bình luận này?")) {
-      try {
-        const response = await API.delete(
-          `/posts/${postId}/comments/${commentId}`,
-        );
-        if (response.data.success) {
-          setPostComments((prev) => ({
-            ...prev,
-            [postId]: prev[postId].filter((c) => c._id !== commentId),
-          }));
-          setPosts((prevPosts) =>
-            prevPosts.map((p) =>
-              p._id === postId
-                ? { ...p, commentCount: Math.max(0, p.commentCount - 1) }
-                : p,
-            ),
-          );
-        }
-      } catch (error) {
-        alert("Xóa bình luận thất bại!");
-      }
-    }
   };
 
   return (
@@ -891,6 +764,8 @@ const Profile = () => {
                                 handleUpdateComment(
                                   activeCommentPostId,
                                   comment._id,
+                                  editingCommentContent,
+                                  cancelEditingComment,
                                 )
                               }
                               disabled={
@@ -939,10 +814,7 @@ const Profile = () => {
                 placeholder="Viết bình luận..."
                 value={commentInputs[activeCommentPostId] || ""}
                 onChange={(e) =>
-                  setCommentInputs({
-                    ...commentInputs,
-                    [activeCommentPostId]: e.target.value,
-                  })
+                  setCommentInput(activeCommentPostId, e.target.value)
                 }
                 style={styles.modalCommentInput}
               />

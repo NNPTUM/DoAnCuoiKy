@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import API from "../api/axios";
 import DashboardTopNavbar from "../components/DashboardTopNavbar";
 import BackButton from "../components/BackButton";
+import ReportStatusBadge from "../components/ReportStatusBadge";
 import "./dashboard.css";
 
 const REASON_TRANSLATIONS = {
@@ -44,12 +45,12 @@ const ModeratorDashboard = () => {
   const updateReport = async (reportId, status) => {
     try {
       let resolutionNote = `Moderator chuyển trạng thái sang ${status}`;
-      
+
       // Cho phép người kiểm duyệt nhập ghi chú nếu chuyển thành resolved/dismissed
       if (status === "resolved" || status === "dismissed") {
         const userInput = window.prompt(
           `Nhập ghi chú xử lý cho trạng thái "${status}" (tùy chọn):`,
-          resolutionNote
+          resolutionNote,
         );
         if (userInput === null) return; // Người dùng ấn Cancel thì hủy thao tác
         resolutionNote = userInput.trim() || resolutionNote;
@@ -168,43 +169,104 @@ const ModeratorDashboard = () => {
                 <article key={report._id} className="report-card">
                   <div className="report-meta">
                     <span className="meta-pill">Loại: {report.targetType}</span>
-                    <span className="meta-pill">Lý do: {REASON_TRANSLATIONS[report.reason] || report.reason}</span>
-                    <span className="meta-pill">Trạng thái: {report.status}</span>
+                    <span className="meta-pill">
+                      Lý do:{" "}
+                      {REASON_TRANSLATIONS[report.reason] || report.reason}
+                    </span>
+                    <span className="meta-pill">
+                      Trạng thái: <ReportStatusBadge status={report.status} />
+                    </span>
                   </div>
 
                   {/* Hiển thị thông tin người tố cáo và thời gian */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '14px 0 10px' }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      margin: "14px 0 10px",
+                    }}
+                  >
                     {report.reporterId?.avatarUrl ? (
-                      <img src={report.reporterId.avatarUrl} alt="avatar" style={{width: 36, height: 36, borderRadius: '50%', objectFit: 'cover'}} />
+                      <img
+                        src={report.reporterId.avatarUrl}
+                        alt="avatar"
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: "50%",
+                          objectFit: "cover",
+                        }}
+                      />
                     ) : (
-                      <div style={{width: 36, height: 36, borderRadius: '50%', backgroundColor: '#ccd1d9', flexShrink: 0}} />
+                      <div
+                        style={{
+                          width: 36,
+                          height: 36,
+                          borderRadius: "50%",
+                          backgroundColor: "#ccd1d9",
+                          flexShrink: 0,
+                        }}
+                      />
                     )}
                     <div>
-                      <div style={{fontSize: 14, fontWeight: 600, color: '#333'}}>
-                        {report.reporterId?.username || 'Người dùng ẩn danh'}
-                        {report.reporterId?._id && <span style={{fontSize: 12, color: '#888', marginLeft: 6}}>(ID: {report.reporterId._id})</span>}
+                      <div
+                        style={{ fontSize: 14, fontWeight: 600, color: "#333" }}
+                      >
+                        {report.reporterId?.username || "Người dùng ẩn danh"}
+                        {report.reporterId?._id && (
+                          <span
+                            style={{
+                              fontSize: 12,
+                              color: "#888",
+                              marginLeft: 6,
+                            }}
+                          >
+                            (ID: {report.reporterId._id})
+                          </span>
+                        )}
                       </div>
-                      <div style={{fontSize: 12, color: '#666'}}>
-                        {new Date(report.createdAt).toLocaleString('vi-VN')}
+                      <div style={{ fontSize: 12, color: "#666" }}>
+                        {new Date(report.createdAt).toLocaleString("vi-VN")}
                       </div>
                     </div>
                   </div>
 
-                  <div style={{ fontSize: 14, marginBottom: 8, color: '#444' }}>
+                  <div style={{ fontSize: 14, marginBottom: 8, color: "#444" }}>
                     <strong>Target ID:</strong> {report.targetId}
                   </div>
 
                   {report.description && (
-                    <div style={{ fontSize: 14, color: "#334d73", padding: '10px', backgroundColor: '#f0f4f8', borderRadius: 6, marginBottom: 8 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        color: "#334d73",
+                        padding: "10px",
+                        backgroundColor: "#f0f4f8",
+                        borderRadius: 6,
+                        marginBottom: 8,
+                      }}
+                    >
                       <strong>Mô tả vi phạm: </strong> {report.description}
                     </div>
                   )}
 
                   {/* Hiển thị ghi chú của kiểm duyệt viên */}
                   {report.resolutionNote && (
-                    <div style={{ fontSize: 13, color: "#2E7D32", padding: '8px 10px', backgroundColor: '#E8F5E9', borderLeft: '3px solid #2E7D32', borderRadius: '0 6px 6px 0', marginBottom: 12 }}>
-                      <strong>Ghi chú xử lý: </strong> {report.resolutionNote} 
-                      {report.resolvedBy?.username && ` (Bởi: ${report.resolvedBy.username})`}
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: "#2E7D32",
+                        padding: "8px 10px",
+                        backgroundColor: "#E8F5E9",
+                        borderLeft: "3px solid #2E7D32",
+                        borderRadius: "0 6px 6px 0",
+                        marginBottom: 12,
+                      }}
+                    >
+                      <strong>Ghi chú xử lý: </strong> {report.resolutionNote}
+                      {report.resolvedBy?.username &&
+                        ` (Bởi: ${report.resolvedBy.username})`}
                     </div>
                   )}
 
@@ -229,7 +291,17 @@ const ModeratorDashboard = () => {
                     </button>
 
                     {report.targetType === "Post" && (
-                      <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap", width: "100%", paddingLeft: 10, borderLeft: "2px solid #ddd" }}>
+                      <div
+                        style={{
+                          marginTop: 8,
+                          display: "flex",
+                          gap: 8,
+                          flexWrap: "wrap",
+                          width: "100%",
+                          paddingLeft: 10,
+                          borderLeft: "2px solid #ddd",
+                        }}
+                      >
                         <button
                           className="danger-btn"
                           onClick={() =>
@@ -244,7 +316,7 @@ const ModeratorDashboard = () => {
                         </button>
                         <button
                           className="danger-btn"
-                          style={{ backgroundColor: '#d32f2f' }}
+                          style={{ backgroundColor: "#d32f2f" }}
                           onClick={() =>
                             moderatePost(
                               report.targetId?._id || report.targetId,
@@ -257,7 +329,7 @@ const ModeratorDashboard = () => {
                         </button>
                         <button
                           className="ghost-btn"
-                          style={{ borderColor: '#2E7D32', color: '#2E7D32' }}
+                          style={{ borderColor: "#2E7D32", color: "#2E7D32" }}
                           onClick={() =>
                             moderatePost(
                               report.targetId?._id || report.targetId,
@@ -286,7 +358,9 @@ const ModeratorDashboard = () => {
                     {report.targetType === "User" && (
                       <button
                         className="danger-btn"
-                        onClick={() => warnUser(report.targetId?._id || report.targetId)}
+                        onClick={() =>
+                          warnUser(report.targetId?._id || report.targetId)
+                        }
                       >
                         Cảnh cáo user bị report
                       </button>
@@ -296,7 +370,6 @@ const ModeratorDashboard = () => {
               ))}
             </div>
           </section>
-
 
           {message && (
             <div

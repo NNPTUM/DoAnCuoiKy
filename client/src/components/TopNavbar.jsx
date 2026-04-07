@@ -2,15 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSocket } from "../context/SocketContext";
 import API from "../api/axios";
-
-const getStoredUser = () => {
-  try {
-    const rawUser = localStorage.getItem("user");
-    return rawUser ? JSON.parse(rawUser) : null;
-  } catch (error) {
-    return null;
-  }
-};
+import { getCurrentUser } from "../utils/authUser";
 
 const TopNavbar = ({
   homePath = "/",
@@ -23,7 +15,7 @@ const TopNavbar = ({
   const navigate = useNavigate();
   const socketState = useSocket();
   const pendingCount = socketState?.pendingCount || 0;
-  const currentUser = getStoredUser();
+  const currentUser = getCurrentUser();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [searchResults, setSearchResults] = useState([]);
