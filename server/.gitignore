@@ -1,2 +1,5 @@
 node_modules/
 .env
+copy_comment_logic.sh
+fix.js 
+update_pages.sh
